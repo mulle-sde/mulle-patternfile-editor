@@ -1,7 +1,7 @@
 {
   "name": "mulle-patternfile-editor",
   "version": "0.0.1",
-  "description": "🎯 GUI App to edit mulle-match pattern files",
+  "description": "🧶 GUI App to edit mulle-match pattern files",
   "main": "main.js",
   "homepage": "https://github.com/mulle-sde",
   "repository": {
@@ -51,7 +51,7 @@
       ],
       "category": "Development",
       "icon": "icon-512.png",
-      "description": "🎯 GUI App to edit mulle-match pattern files",
+      "description": "🧶 GUI App to edit mulle-match pattern files",
       "executableName": "mulle-patternfile-editor"
     },
     "appImage": {

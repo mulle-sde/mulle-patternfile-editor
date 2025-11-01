@@ -36,6 +36,11 @@ let envVars = {
 };
 let originalEnvVars = {};
 
+// Preferences
+let preferences = {
+   showBadges: false
+};
+
 // Menu event handlers
 window.electronAPI.onMenuOpen(() => {
    openProject();
@@ -45,9 +50,21 @@ window.electronAPI.onMenuSave(() => {
    saveAll();
 });
 
+window.electronAPI.onOpenRecentProject((projectPath) => {
+   loadProject(projectPath);
+});
+
+window.electronAPI.onMenuPreferences(() => {
+   openPreferences();
+});
+
 welcomeOpenBtn.addEventListener("click", () => {
    openProject();
 });
+
+// Load recent projects and preferences on startup
+loadRecentProjects();
+loadPreferences();
 
 async function openProject() {
    const result = await window.electronAPI.openDirectoryDialog();
@@ -66,6 +83,9 @@ async function loadProject(projectPath) {
       alert("Cannot open directory: No .mulle folder found.\n\nPlease select a valid mulle project directory.");
       return;
    }
+   
+   // Add to recent projects
+   await window.electronAPI.addRecentProject(projectPath);
    
    currentProjectPath = projectPath;
    projectPathEl.textContent = projectPath;
@@ -158,22 +178,25 @@ function createEditor(file, content, type) {
    titleText.textContent = file.name;
    editorTitle.appendChild(titleText);
    
-   const titleBadges = document.createElement("span");
-   titleBadges.className = "editor-title-badges";
-   
-   const locationBadge = document.createElement("span");
-   locationBadge.className = `file-location file-location-${file.location}`;
-   locationBadge.textContent = file.location;
-   titleBadges.appendChild(locationBadge);
-   
-   if (file.isSymlink) {
-      const symlinkBadge = document.createElement("span");
-      symlinkBadge.className = "file-symlink";
-      symlinkBadge.textContent = "symlink";
-      titleBadges.appendChild(symlinkBadge);
+   if (preferences.showBadges) {
+      const titleBadges = document.createElement("span");
+      titleBadges.className = "editor-title-badges";
+      
+      const locationBadge = document.createElement("span");
+      locationBadge.className = `file-location file-location-${file.location}`;
+      locationBadge.textContent = file.location;
+      titleBadges.appendChild(locationBadge);
+      
+      if (file.isSymlink) {
+         const symlinkBadge = document.createElement("span");
+         symlinkBadge.className = "file-symlink";
+         symlinkBadge.textContent = "symlink";
+         titleBadges.appendChild(symlinkBadge);
+      }
+      
+      editorTitle.appendChild(titleBadges);
    }
    
-   editorTitle.appendChild(titleBadges);
    editorHeader.appendChild(editorTitle);
    
    const closeBtn = document.createElement("button");
@@ -240,11 +263,170 @@ async function saveAll() {
       return;
    }
    
+   console.log("=== Starting Smart Save ===");
+   
    // Save environment variables first
    await saveEnvironmentVariables();
    
-   console.log("Save all files - to be implemented");
-   // TODO: Save all modified files
+   /*
+    * SMART SAVE LOGIC:
+    * 
+    * 1. Save all modified files:
+    *    - If file is in share/ → create/update in etc/
+    *    - If file is in etc/ → update in place
+    *    - If file was a symlink → remove symlink, write real file
+    * 
+    * 2. After saving, optimize etc/ structure for each directory (ignore.d, match.d):
+    *    a) Compare each etc/ file with corresponding share/ file
+    *    b) If content is identical → replace etc/ file with symlink to share/
+    *    c) If all files in etc/ are symlinks (no unique content) → remove etc/ directory entirely
+    * 
+    * This ensures:
+    *    - etc/ only contains files that differ from share/
+    *    - Identical files are symlinked (save space, show relationship)
+    *    - Empty/redundant etc/ directories are cleaned up
+    */
+   
+   try {
+      // Step 1: Save all modified files
+      await saveModifiedFiles();
+      
+      // Step 2: Optimize etc/ structure (create symlinks, cleanup)
+      await optimizeEtcStructure("ignore.d");
+      await optimizeEtcStructure("match.d");
+      
+      console.log("=== Save Complete ===");
+      alert("Files saved successfully!");
+      
+      // Reload project to show updated state
+      await loadProject(currentProjectPath);
+      
+   } catch (err) {
+      console.error("Save failed:", err);
+      alert("Save failed: " + err.message);
+   }
+}
+
+async function saveModifiedFiles() {
+   console.log("Step 1: Saving modified files...");
+   
+   const allEditors = [...editors.ignore, ...editors.match];
+   
+   for (const editor of allEditors) {
+      if (!editor.modified) continue;
+      
+      const file = editor.file;
+      const content = editor.textarea.value;
+      
+      console.log(`  Saving: ${file.name} (location: ${file.location}, symlink: ${file.isSymlink})`);
+      
+      // Determine target path
+      let targetPath = file.path;
+      
+      // If file is in share/, we must create/update in etc/
+      if (file.location === "share") {
+         const etcDir = file.path.includes("ignore.d") 
+            ? `${currentProjectPath}/.mulle/etc/match/ignore.d`
+            : `${currentProjectPath}/.mulle/etc/match/match.d`;
+         
+         targetPath = `${etcDir}/${file.name}`;
+         console.log(`    Moving to etc: ${targetPath}`);
+      }
+      
+      // If target was a symlink, remove it first
+      if (file.isSymlink || file.location === "share") {
+         const exists = await window.electronAPI.fileExists(targetPath);
+         if (exists.exists) {
+            await window.electronAPI.removeFile(targetPath);
+            console.log(`    Removed old file/symlink`);
+         }
+      }
+      
+      // Write the content
+      const result = await window.electronAPI.writePatternFile(targetPath, content);
+      if (!result.success) {
+         throw new Error(`Failed to write ${file.name}: ${result.error}`);
+      }
+      
+      // Mark as saved
+      editor.modified = false;
+      editor.wrapper.querySelector(".editor-title").classList.remove("modified");
+      
+      console.log(`    ✓ Saved`);
+   }
+}
+
+async function optimizeEtcStructure(subdir) {
+   console.log(`Step 2: Optimizing etc/${subdir}...`);
+   
+   const etcPath = `${currentProjectPath}/.mulle/etc/match/${subdir}`;
+   const sharePath = `${currentProjectPath}/.mulle/share/match/${subdir}`;
+   
+   // Check if etc directory exists
+   const etcExists = await window.electronAPI.fileExists(etcPath);
+   if (!etcExists.exists) {
+      console.log(`  etc/${subdir} doesn't exist, nothing to optimize`);
+      return;
+   }
+   
+   // Get all files in etc/
+   const etcResult = await window.electronAPI.listDirectory(etcPath);
+   if (!etcResult.success || etcResult.files.length === 0) {
+      console.log(`  etc/${subdir} is empty, removing directory`);
+      await window.electronAPI.removeDirectory(etcPath);
+      return;
+   }
+   
+   let hasUniqueFiles = false;
+   
+   // For each file in etc/, compare with share/
+   for (const filename of etcResult.files) {
+      const etcFilePath = `${etcPath}/${filename}`;
+      const shareFilePath = `${sharePath}/${filename}`;
+      
+      // Check if corresponding share file exists
+      const shareExists = await window.electronAPI.fileExists(shareFilePath);
+      if (!shareExists.exists) {
+         console.log(`  ${filename}: unique to etc/ (no share version)`);
+         hasUniqueFiles = true;
+         continue;
+      }
+      
+      // Read both files
+      const etcContent = await window.electronAPI.readPatternFile(etcFilePath);
+      const shareContent = await window.electronAPI.readPatternFile(shareFilePath);
+      
+      if (!etcContent.success || !shareContent.success) {
+         console.log(`  ${filename}: couldn't read, keeping as-is`);
+         hasUniqueFiles = true;
+         continue;
+      }
+      
+      // Compare content
+      if (etcContent.content === shareContent.content) {
+         console.log(`  ${filename}: identical to share/, creating symlink`);
+         
+         // Create relative symlink: ../../../share/match/{subdir}/{filename}
+         const relativeTarget = `../../../share/match/${subdir}/${filename}`;
+         const symlinkResult = await window.electronAPI.createSymlink(relativeTarget, etcFilePath);
+         
+         if (!symlinkResult.success) {
+            console.error(`    Failed to create symlink: ${symlinkResult.error}`);
+            hasUniqueFiles = true;
+         }
+      } else {
+         console.log(`  ${filename}: differs from share/, keeping file`);
+         hasUniqueFiles = true;
+      }
+   }
+   
+   // If no unique files (all symlinks), remove etc directory
+   if (!hasUniqueFiles) {
+      console.log(`  All files are symlinks, removing etc/${subdir}`);
+      await window.electronAPI.removeDirectory(etcPath);
+   } else {
+      console.log(`  etc/${subdir} contains unique files, keeping directory`);
+   }
 }
 
 // Preview functionality
@@ -433,6 +615,84 @@ async function saveEnvironmentVariables() {
       }
    }
 }
+
+// Recent projects management
+async function loadRecentProjects() {
+   const recentProjects = await window.electronAPI.getRecentProjects();
+   const container = document.getElementById("recent-projects-list");
+   
+   if (!container) return;
+   
+   container.innerHTML = "";
+   
+   if (recentProjects.length === 0) {
+      const emptyMsg = document.createElement("div");
+      emptyMsg.className = "recent-empty";
+      emptyMsg.textContent = "No recent projects";
+      container.appendChild(emptyMsg);
+      return;
+   }
+   
+   for (const projectPath of recentProjects) {
+      const item = document.createElement("div");
+      item.className = "recent-item";
+      
+      const parts = projectPath.split(/[/\\]/);
+      const projectName = parts[parts.length - 1];
+      const parentName = parts.length >= 2 ? parts[parts.length - 2] : "";
+      
+      const nameSpan = document.createElement("span");
+      nameSpan.className = "recent-name";
+      nameSpan.textContent = projectName;
+      
+      const pathSpan = document.createElement("span");
+      pathSpan.className = "recent-path";
+      pathSpan.textContent = parentName ? `${parentName}/` : "";
+      
+      item.appendChild(pathSpan);
+      item.appendChild(nameSpan);
+      
+      item.addEventListener("click", () => {
+         loadProject(projectPath);
+      });
+      
+      container.appendChild(item);
+   }
+}
+
+// Preferences management
+async function loadPreferences() {
+   preferences = await window.electronAPI.getPreferences();
+}
+
+function openPreferences() {
+   const modal = document.getElementById("preferences-modal");
+   const showBadgesCheckbox = document.getElementById("pref-show-badges");
+   
+   showBadgesCheckbox.checked = preferences.showBadges;
+   modal.classList.add("show");
+}
+
+document.getElementById("close-preferences-modal").addEventListener("click", () => {
+   document.getElementById("preferences-modal").classList.remove("show");
+});
+
+document.getElementById("cancel-preferences").addEventListener("click", () => {
+   document.getElementById("preferences-modal").classList.remove("show");
+});
+
+document.getElementById("save-preferences").addEventListener("click", async () => {
+   const showBadgesCheckbox = document.getElementById("pref-show-badges");
+   
+   preferences.showBadges = showBadgesCheckbox.checked;
+   
+   await window.electronAPI.setPreferences(preferences);
+   
+   document.getElementById("preferences-modal").classList.remove("show");
+   
+   // Show message to reload
+   alert("Preferences saved. Please reopen the project to see changes.");
+});
 
 // Cleanup on window close
 window.addEventListener("beforeunload", async () => {

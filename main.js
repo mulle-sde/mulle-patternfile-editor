@@ -69,8 +69,63 @@ async function createWindow()
    createMenu();
 }
 
-function createMenu() 
+async function updateRecentFilesMenu() 
 {
+   const menu = Menu.getApplicationMenu();
+   if (menu) 
+   {
+      createMenu();
+   }
+}
+
+function formatRecentPath(dirPath) 
+{
+   const parts = dirPath.split(path.sep);
+   if (parts.length >= 2) 
+   {
+      return `${parts[parts.length - 2]}/${parts[parts.length - 1]}`;
+   }
+   return path.basename(dirPath);
+}
+
+async function createMenu() 
+{
+   let recentProjects = [];
+   try 
+   {
+      const recentsPath = path.join(app.getPath("userData"), "recent-projects.json");
+      const data = await fs.readFile(recentsPath, "utf-8");
+      recentProjects = JSON.parse(data);
+   }
+   catch (err) 
+   {
+      // No recent projects
+   }
+
+   const recentProjectsSubmenu =
+    recentProjects.length > 0
+       ? recentProjects.map((projectPath) => ({
+          label: formatRecentPath(projectPath),
+          click: async () => 
+          {
+             try 
+             {
+                mainWindow.webContents.send("open-recent-project", projectPath);
+             }
+             catch (err) 
+             {
+                dialog.showErrorBox(
+                   "Error",
+                   `Could not open: ${err.message}`,
+                );
+             }
+          },
+       }))
+       : [{
+          label  : "No recent projects",
+          enabled: false 
+       }];
+
    const template = [
       {
          label  : "File",
@@ -79,6 +134,10 @@ function createMenu()
                label      : "Open Project...",
                accelerator: "CmdOrCtrl+O",
                click      : () => mainWindow.webContents.send("menu-open"),
+            },
+            {
+               label  : "Open Recent",
+               submenu: recentProjectsSubmenu,
             },
             {
                label      : "Save All",
@@ -126,6 +185,12 @@ function createMenu()
             { role: "zoomOut" },
             { type: "separator" },
             { role: "togglefullscreen" },
+            { type: "separator" },
+            {
+               label      : "Preferences…",
+               accelerator: "CmdOrCtrl+,",
+               click      : () => mainWindow.webContents.send("menu-preferences"),
+            },
          ],
       },
       {
@@ -325,6 +390,84 @@ ipcMain.handle("cleanup-temp-directory", async (event, tempDir) => {
    }
 });
 
+async function addToRecentProjects(projectPath) 
+{
+   try 
+   {
+      const recentsPath = path.join(app.getPath("userData"), "recent-projects.json");
+      let recents = [];
+      
+      try 
+      {
+         const data = await fs.readFile(recentsPath, "utf-8");
+         recents = JSON.parse(data);
+      }
+      catch (err) 
+      {
+         // File doesn't exist yet
+      }
+
+      recents = recents.filter((f) => f !== projectPath);
+      recents.unshift(projectPath);
+      recents = recents.slice(0, 10);
+
+      await fs.writeFile(recentsPath, JSON.stringify(recents), "utf-8");
+
+      updateRecentFilesMenu();
+   }
+   catch (err) 
+   {
+      console.error("Failed to update recent projects:", err);
+   }
+}
+
+ipcMain.handle("get-recent-projects", async () => 
+{
+   try 
+   {
+      const recentsPath = path.join(app.getPath("userData"), "recent-projects.json");
+      const data = await fs.readFile(recentsPath, "utf-8");
+      return JSON.parse(data);
+   }
+   catch (err) 
+   {
+      return [];
+   }
+});
+
+ipcMain.handle("add-recent-project", async (event, projectPath) => 
+{
+   await addToRecentProjects(projectPath);
+});
+
+ipcMain.handle("get-preferences", async () => 
+{
+   try 
+   {
+      const prefsPath = path.join(app.getPath("userData"), "preferences.json");
+      const data = await fs.readFile(prefsPath, "utf-8");
+      return JSON.parse(data);
+   }
+   catch (err) 
+   {
+      return { showBadges: false }; // Default: hide badges
+   }
+});
+
+ipcMain.handle("set-preferences", async (event, prefs) => 
+{
+   try 
+   {
+      const prefsPath = path.join(app.getPath("userData"), "preferences.json");
+      await fs.writeFile(prefsPath, JSON.stringify(prefs), "utf-8");
+      return { success: true };
+   }
+   catch (err) 
+   {
+      return { success: false, error: err.message };
+   }
+});
+
 ipcMain.handle("get-mulle-env", async (event, projectPath, keyName) => {
    return new Promise((resolve) => {
       const command = `cd "${projectPath}" && mulle-env get ${keyName}`;
@@ -357,4 +500,74 @@ ipcMain.handle("set-mulle-env", async (event, projectPath, keyName, value) => {
          }
       });
    });
+});
+
+ipcMain.handle("write-pattern-file", async (event, filePath, content) => {
+   try {
+      await fs.writeFile(filePath, content, "utf-8");
+      return { success: true };
+   } catch (err) {
+      return { success: false, error: err.message };
+   }
+});
+
+ipcMain.handle("read-pattern-file", async (event, filePath) => {
+   try {
+      const content = await fs.readFile(filePath, "utf-8");
+      return { success: true, content };
+   } catch (err) {
+      return { success: false, error: err.message };
+   }
+});
+
+ipcMain.handle("create-symlink", async (event, target, linkPath) => {
+   try {
+      // Remove existing file/symlink if it exists
+      try {
+         await fs.unlink(linkPath);
+      } catch (err) {
+         // File doesn't exist, that's fine
+      }
+      
+      await fs.symlink(target, linkPath);
+      return { success: true };
+   } catch (err) {
+      return { success: false, error: err.message };
+   }
+});
+
+ipcMain.handle("remove-file", async (event, filePath) => {
+   try {
+      await fs.unlink(filePath);
+      return { success: true };
+   } catch (err) {
+      return { success: false, error: err.message };
+   }
+});
+
+ipcMain.handle("list-directory", async (event, dirPath) => {
+   try {
+      const files = await fs.readdir(dirPath);
+      return { success: true, files };
+   } catch (err) {
+      return { success: false, files: [], error: err.message };
+   }
+});
+
+ipcMain.handle("remove-directory", async (event, dirPath) => {
+   try {
+      await fs.rm(dirPath, { recursive: true, force: true });
+      return { success: true };
+   } catch (err) {
+      return { success: false, error: err.message };
+   }
+});
+
+ipcMain.handle("file-exists", async (event, filePath) => {
+   try {
+      await fs.access(filePath);
+      return { exists: true };
+   } catch (err) {
+      return { exists: false };
+   }
 });
