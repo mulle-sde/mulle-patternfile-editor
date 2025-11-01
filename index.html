@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; img-src 'self' data:">
+  <title>mulle-patternfile Editor</title>
+  <link rel="icon" type="image/png" href="icon.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="toolbar">
+    <img src="icon.svg" alt="mulle logo" class="toolbar-logo">
+    <span class="toolbar-title">mulle-patternfile Editor</span>
+    <span id="project-path" class="project-path"></span>
+  </div>
+
+  <div class="main-content">
+    <div id="welcome-container" class="welcome-container">
+      <div class="welcome-content">
+        <h1>mulle-patternfile Editor</h1>
+        <p class="welcome-text">Open a mulle project directory to edit match and ignore pattern files.</p>
+        <button id="welcome-open-btn" class="welcome-button">Open Project Directory</button>
+      </div>
+    </div>
+
+    <div id="editor-container" class="editor-container hidden">
+      <div class="env-panel">
+        <div class="env-header">
+          <h3>Environment Variables</h3>
+        </div>
+        <table class="env-table">
+          <tbody id="env-table-body">
+            <tr>
+              <td class="env-key">MULLE_MATCH_FILENAMES</td>
+              <td class="env-value"><input type="text" id="env-filenames" class="env-input" placeholder="Loading..."></td>
+            </tr>
+            <tr>
+              <td class="env-key">MULLE_MATCH_IGNORE_PATH</td>
+              <td class="env-value"><input type="text" id="env-ignore-path" class="env-input" placeholder="Loading..."></td>
+            </tr>
+            <tr>
+              <td class="env-key">MULLE_MATCH_PATH</td>
+              <td class="env-value"><input type="text" id="env-path" class="env-input" placeholder="Loading..."></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="editors-panel">
+        <div class="columns">
+          <div class="column" id="ignore-column">
+            <div class="column-header">
+              <h2>Ignore Patterns (ignore.d)</h2>
+              <button class="add-file-btn" id="add-ignore-btn" title="Add new ignore pattern file">+</button>
+            </div>
+            <div class="editor-area" id="ignore-editor-area"></div>
+          </div>
+          <div class="column" id="match-column">
+            <div class="column-header">
+              <h2>Match Patterns (match.d)</h2>
+              <button class="add-file-btn" id="add-match-btn" title="Add new match pattern file">+</button>
+            </div>
+            <div class="editor-area" id="match-editor-area"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="preview-panel" id="preview-panel">
+        <div class="preview-header">
+          <h3>Preview: Matched Files</h3>
+          <span class="preview-status" id="preview-status">Running mulle-match...</span>
+        </div>
+        <div class="preview-content" id="preview-content">
+          <div class="preview-loading">Initializing preview...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

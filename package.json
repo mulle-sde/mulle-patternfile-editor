@@ -1,0 +1,123 @@
+{
+  "name": "mulle-patternfile-editor",
+  "version": "0.0.1",
+  "description": "🎯 GUI App to edit mulle-match pattern files",
+  "main": "main.js",
+  "homepage": "https://github.com/mulle-sde",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mulle-sde/mulle-patternfile-editor.git"
+  },
+  "scripts": {
+    "start": "electron . --no-sandbox",
+    "dev": "electron . --no-sandbox --inspect",
+    "build": "electron-builder",
+    "build:linux": "electron-builder --linux",
+    "build:appimage": "electron-builder --linux AppImage",
+    "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win",
+    "build:all": "electron-builder --linux --mac --win",
+    "build:dir": "electron-builder --dir",
+    "format": "npx eslint *.js --fix"
+  },
+  "build": {
+    "appId": "com.mulle-kybernetik.patternfile-editor",
+    "productName": "mulle-patternfile-editor",
+    "publish": [
+      {
+        "provider": "github",
+        "releaseType": "release",
+        "vPrefixedTagName": false
+      }
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer.js",
+      "index.html",
+      "styles.css",
+      "icon.svg",
+      "icon.png",
+      "icon-512.png"
+    ],
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb",
+        "rpm"
+      ],
+      "category": "Development",
+      "icon": "icon-512.png",
+      "description": "🎯 GUI App to edit mulle-match pattern files",
+      "executableName": "mulle-patternfile-editor"
+    },
+    "appImage": {
+      "license": "LICENSE"
+    },
+    "deb": {
+      "depends": []
+    },
+    "rpm": {
+      "depends": []
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.developer-tools",
+      "icon": "icon-512.png"
+    },
+    "dmg": {
+      "background": null,
+      "window": {
+        "width": 540,
+        "height": 380
+      }
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "icon-512.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  },
+  "keywords": [
+    "electron",
+    "mulle-match",
+    "pattern-editor",
+    "file-patterns"
+  ],
+  "author": {
+    "name": "Mulle kybernetiK",
+    "email": "nat@mulle-kybernetik.com"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^28.3.3",
+    "electron-builder": "^24.13.3",
+    "eslint": "^8.57.1"
+  }
+}
