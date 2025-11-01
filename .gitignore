@@ -5,3 +5,5 @@ dist/
 *.swp
 *.swo
 *~
+package-lock.json
+styleguide.md

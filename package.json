@@ -119,5 +119,8 @@
     "electron": "^28.3.3",
     "electron-builder": "^24.13.3",
     "eslint": "^8.57.1"
+  },
+  "dependencies": {
+    "eslint-plugin-align-assignments": "^1.1.2"
   }
 }

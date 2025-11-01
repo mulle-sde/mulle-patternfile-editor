@@ -15,11 +15,11 @@ const envPath = document.getElementById("env-path");
 let currentProjectPath = null;
 let patternFiles = {
    ignoreFiles: [],
-   matchFiles: []
+   matchFiles : []
 };
-let editors = {
+const editors = {
    ignore: [],
-   match: []
+   match : []
 };
 
 // Preview state
@@ -29,12 +29,12 @@ let previewDelayTimer = null;
 let lastChangeTime = null;
 
 // Environment variables
-let envVars = {
-   MULLE_MATCH_FILENAMES: "",
+const envVars = {
+   MULLE_MATCH_FILENAMES  : "",
    MULLE_MATCH_IGNORE_PATH: "",
-   MULLE_MATCH_PATH: ""
+   MULLE_MATCH_PATH       : ""
 };
-let originalEnvVars = {};
+const originalEnvVars = {};
 
 // Preferences
 let preferences = {
@@ -42,23 +42,28 @@ let preferences = {
 };
 
 // Menu event handlers
-window.electronAPI.onMenuOpen(() => {
+window.electronAPI.onMenuOpen(() => 
+{
    openProject();
 });
 
-window.electronAPI.onMenuSave(() => {
+window.electronAPI.onMenuSave(() => 
+{
    saveAll();
 });
 
-window.electronAPI.onOpenRecentProject((projectPath) => {
+window.electronAPI.onOpenRecentProject((projectPath) => 
+{
    loadProject(projectPath);
 });
 
-window.electronAPI.onMenuPreferences(() => {
+window.electronAPI.onMenuPreferences(() => 
+{
    openPreferences();
 });
 
-welcomeOpenBtn.addEventListener("click", () => {
+welcomeOpenBtn.addEventListener("click", () => 
+{
    openProject();
 });
 
@@ -66,20 +71,24 @@ welcomeOpenBtn.addEventListener("click", () => {
 loadRecentProjects();
 loadPreferences();
 
-async function openProject() {
+async function openProject() 
+{
    const result = await window.electronAPI.openDirectoryDialog();
-   if (!result.canceled && result.filePaths.length > 0) {
+   if (!result.canceled && result.filePaths.length > 0) 
+   {
       const projectPath = result.filePaths[0];
       await loadProject(projectPath);
    }
 }
 
-async function loadProject(projectPath) {
+async function loadProject(projectPath) 
+{
    console.log("Loading project:", projectPath);
    
    // Validate project has .mulle folder
    const validation = await window.electronAPI.validateProject(projectPath);
-   if (!validation.valid) {
+   if (!validation.valid) 
+   {
       alert("Cannot open directory: No .mulle folder found.\n\nPlease select a valid mulle project directory.");
       return;
    }
@@ -91,7 +100,8 @@ async function loadProject(projectPath) {
    projectPathEl.textContent = projectPath;
    
    // Scan for pattern files
-   try {
+   try 
+   {
       const files = await window.electronAPI.scanPatternFiles(projectPath);
       patternFiles = files;
       
@@ -114,28 +124,35 @@ async function loadProject(projectPath) {
       
       welcomeContainer.classList.add("hidden");
       editorContainer.classList.remove("hidden");
-   } catch (err) {
+   }
+   catch (err) 
+   {
       console.error("Failed to scan pattern files:", err);
       alert("Error scanning pattern files: " + err.message);
    }
 }
 
-async function openAllFiles(files, type) {
+async function openAllFiles(files, type) 
+{
    const editorArea = type === "ignore" ? ignoreEditorArea : matchEditorArea;
    
    // Filter files: etc overrides share (by filename)
    const fileMap = new Map();
    
    // First pass: add all share files
-   for (const file of files) {
-      if (file.location === "share") {
+   for (const file of files) 
+   {
+      if (file.location === "share") 
+      {
          fileMap.set(file.name, file);
       }
    }
    
    // Second pass: etc files override share files with same name
-   for (const file of files) {
-      if (file.location === "etc") {
+   for (const file of files) 
+   {
+      if (file.location === "etc") 
+      {
          fileMap.set(file.name, file);
       }
    }
@@ -143,7 +160,8 @@ async function openAllFiles(files, type) {
    const uniqueFiles = Array.from(fileMap.values());
    uniqueFiles.sort((a, b) => a.name.localeCompare(b.name));
    
-   if (uniqueFiles.length === 0) {
+   if (uniqueFiles.length === 0) 
+   {
       const emptyMsg = document.createElement("div");
       emptyMsg.className = "empty-message";
       emptyMsg.textContent = "No pattern files found";
@@ -151,17 +169,22 @@ async function openAllFiles(files, type) {
       return;
    }
    
-   for (const file of uniqueFiles) {
+   for (const file of uniqueFiles) 
+   {
       const result = await window.electronAPI.readFile(file.path);
-      if (result.success) {
+      if (result.success) 
+      {
          createEditor(file, result.content, type);
-      } else {
+      }
+      else 
+      {
          console.error("Failed to read", file.path, result.error);
       }
    }
 }
 
-function createEditor(file, content, type) {
+function createEditor(file, content, type) 
+{
    const editorArea = type === "ignore" ? ignoreEditorArea : matchEditorArea;
    const editorList = editors[type];
    
@@ -178,7 +201,8 @@ function createEditor(file, content, type) {
    titleText.textContent = file.name;
    editorTitle.appendChild(titleText);
    
-   if (preferences.showBadges) {
+   if (preferences.showBadges) 
+   {
       const titleBadges = document.createElement("span");
       titleBadges.className = "editor-title-badges";
       
@@ -187,7 +211,8 @@ function createEditor(file, content, type) {
       locationBadge.textContent = file.location;
       titleBadges.appendChild(locationBadge);
       
-      if (file.isSymlink) {
+      if (file.isSymlink) 
+      {
          const symlinkBadge = document.createElement("span");
          symlinkBadge.className = "file-symlink";
          symlinkBadge.textContent = "symlink";
@@ -212,17 +237,19 @@ function createEditor(file, content, type) {
    textarea.spellcheck = false;
    
    // Auto-size textarea to content (number of lines + 1)
-   const lineCount = content.split('\n').length;
+   const lineCount = content.split("\n").length;
    textarea.rows = lineCount + 1;
    
-   textarea.addEventListener("input", () => {
+   textarea.addEventListener("input", () => 
+   {
       const editor = editorList.find(e => e.file.path === file.path);
-      if (editor) {
+      if (editor) 
+      {
          editor.modified = true;
          editorTitle.classList.add("modified");
       }
       // Auto-resize on input
-      const newLineCount = textarea.value.split('\n').length;
+      const newLineCount = textarea.value.split("\n").length;
       textarea.rows = newLineCount + 1;
       
       // Trigger preview update
@@ -236,29 +263,39 @@ function createEditor(file, content, type) {
    editorList.push({
       file,
       textarea,
-      wrapper: editorWrapper,
+      wrapper : editorWrapper,
       modified: false
    });
 }
 
-function closeEditor(file, type) {
+function closeEditor(file, type) 
+{
    const editorList = editors[type];
    const index = editorList.findIndex(e => e.file.path === file.path);
-   if (index === -1) return;
+   if (index === -1) 
+   {
+      return;
+   }
    
    const editor = editorList[index];
    
-   if (editor.modified) {
+   if (editor.modified) 
+   {
       const confirm = window.confirm(`Close ${file.name} without saving changes?`);
-      if (!confirm) return;
+      if (!confirm) 
+      {
+         return;
+      }
    }
    
    editor.wrapper.remove();
    editorList.splice(index, 1);
 }
 
-async function saveAll() {
-   if (!currentProjectPath) {
+async function saveAll() 
+{
+   if (!currentProjectPath) 
+   {
       console.log("No project loaded");
       return;
    }
@@ -287,7 +324,8 @@ async function saveAll() {
     *    - Empty/redundant etc/ directories are cleaned up
     */
    
-   try {
+   try 
+   {
       // Step 1: Save all modified files
       await saveModifiedFiles();
       
@@ -301,19 +339,26 @@ async function saveAll() {
       // Reload project to show updated state
       await loadProject(currentProjectPath);
       
-   } catch (err) {
+   }
+   catch (err) 
+   {
       console.error("Save failed:", err);
       alert("Save failed: " + err.message);
    }
 }
 
-async function saveModifiedFiles() {
+async function saveModifiedFiles() 
+{
    console.log("Step 1: Saving modified files...");
    
    const allEditors = [...editors.ignore, ...editors.match];
    
-   for (const editor of allEditors) {
-      if (!editor.modified) continue;
+   for (const editor of allEditors) 
+   {
+      if (!editor.modified) 
+      {
+         continue;
+      }
       
       const file = editor.file;
       const content = editor.textarea.value;
@@ -324,7 +369,8 @@ async function saveModifiedFiles() {
       let targetPath = file.path;
       
       // If file is in share/, we must create/update in etc/
-      if (file.location === "share") {
+      if (file.location === "share") 
+      {
          const etcDir = file.path.includes("ignore.d") 
             ? `${currentProjectPath}/.mulle/etc/match/ignore.d`
             : `${currentProjectPath}/.mulle/etc/match/match.d`;
@@ -334,9 +380,11 @@ async function saveModifiedFiles() {
       }
       
       // If target was a symlink, remove it first
-      if (file.isSymlink || file.location === "share") {
+      if (file.isSymlink || file.location === "share") 
+      {
          const exists = await window.electronAPI.fileExists(targetPath);
-         if (exists.exists) {
+         if (exists.exists) 
+         {
             await window.electronAPI.removeFile(targetPath);
             console.log(`    Removed old file/symlink`);
          }
@@ -344,7 +392,8 @@ async function saveModifiedFiles() {
       
       // Write the content
       const result = await window.electronAPI.writePatternFile(targetPath, content);
-      if (!result.success) {
+      if (!result.success) 
+      {
          throw new Error(`Failed to write ${file.name}: ${result.error}`);
       }
       
@@ -356,7 +405,8 @@ async function saveModifiedFiles() {
    }
 }
 
-async function optimizeEtcStructure(subdir) {
+async function optimizeEtcStructure(subdir) 
+{
    console.log(`Step 2: Optimizing etc/${subdir}...`);
    
    const etcPath = `${currentProjectPath}/.mulle/etc/match/${subdir}`;
@@ -364,14 +414,16 @@ async function optimizeEtcStructure(subdir) {
    
    // Check if etc directory exists
    const etcExists = await window.electronAPI.fileExists(etcPath);
-   if (!etcExists.exists) {
+   if (!etcExists.exists) 
+   {
       console.log(`  etc/${subdir} doesn't exist, nothing to optimize`);
       return;
    }
    
    // Get all files in etc/
    const etcResult = await window.electronAPI.listDirectory(etcPath);
-   if (!etcResult.success || etcResult.files.length === 0) {
+   if (!etcResult.success || etcResult.files.length === 0) 
+   {
       console.log(`  etc/${subdir} is empty, removing directory`);
       await window.electronAPI.removeDirectory(etcPath);
       return;
@@ -380,13 +432,15 @@ async function optimizeEtcStructure(subdir) {
    let hasUniqueFiles = false;
    
    // For each file in etc/, compare with share/
-   for (const filename of etcResult.files) {
+   for (const filename of etcResult.files) 
+   {
       const etcFilePath = `${etcPath}/${filename}`;
       const shareFilePath = `${sharePath}/${filename}`;
       
       // Check if corresponding share file exists
       const shareExists = await window.electronAPI.fileExists(shareFilePath);
-      if (!shareExists.exists) {
+      if (!shareExists.exists) 
+      {
          console.log(`  ${filename}: unique to etc/ (no share version)`);
          hasUniqueFiles = true;
          continue;
@@ -396,91 +450,118 @@ async function optimizeEtcStructure(subdir) {
       const etcContent = await window.electronAPI.readPatternFile(etcFilePath);
       const shareContent = await window.electronAPI.readPatternFile(shareFilePath);
       
-      if (!etcContent.success || !shareContent.success) {
+      if (!etcContent.success || !shareContent.success) 
+      {
          console.log(`  ${filename}: couldn't read, keeping as-is`);
          hasUniqueFiles = true;
          continue;
       }
       
       // Compare content
-      if (etcContent.content === shareContent.content) {
+      if (etcContent.content === shareContent.content) 
+      {
          console.log(`  ${filename}: identical to share/, creating symlink`);
          
          // Create relative symlink: ../../../share/match/{subdir}/{filename}
          const relativeTarget = `../../../share/match/${subdir}/${filename}`;
          const symlinkResult = await window.electronAPI.createSymlink(relativeTarget, etcFilePath);
          
-         if (!symlinkResult.success) {
+         if (!symlinkResult.success) 
+         {
             console.error(`    Failed to create symlink: ${symlinkResult.error}`);
             hasUniqueFiles = true;
          }
-      } else {
+      }
+      else 
+      {
          console.log(`  ${filename}: differs from share/, keeping file`);
          hasUniqueFiles = true;
       }
    }
    
    // If no unique files (all symlinks), remove etc directory
-   if (!hasUniqueFiles) {
+   if (!hasUniqueFiles) 
+   {
       console.log(`  All files are symlinks, removing etc/${subdir}`);
       await window.electronAPI.removeDirectory(etcPath);
-   } else {
+   }
+   else 
+   {
       console.log(`  etc/${subdir} contains unique files, keeping directory`);
    }
 }
 
 // Preview functionality
-async function initializePreview() {
-   try {
+async function initializePreview() 
+{
+   try 
+   {
       const result = await window.electronAPI.createTempDirectory();
-      if (result.success) {
+      if (result.success) 
+      {
          tempDirectory = result.path;
          console.log("Created temp directory:", tempDirectory);
          await updatePreview();
-      } else {
+      }
+      else 
+      {
          console.error("Failed to create temp directory:", result.error);
          showPreviewError("Failed to create temporary directory");
       }
-   } catch (err) {
+   }
+   catch (err) 
+   {
       console.error("Preview initialization error:", err);
       showPreviewError(err.message);
    }
 }
 
-function schedulePreviewUpdate() {
+function schedulePreviewUpdate() 
+{
    lastChangeTime = Date.now();
    
    // Clear existing timers
-   if (previewDelayTimer) {
+   if (previewDelayTimer) 
+   {
       clearTimeout(previewDelayTimer);
    }
-   if (previewUpdateTimer) {
+   if (previewUpdateTimer) 
+   {
       clearTimeout(previewUpdateTimer);
    }
    
    // Schedule update with 1s delay, max 5s total
-   previewDelayTimer = setTimeout(() => {
+   previewDelayTimer = setTimeout(() => 
+   {
       const elapsed = Date.now() - lastChangeTime;
-      if (elapsed >= 1000 || elapsed >= 5000) {
+      if (elapsed >= 1000 || elapsed >= 5000) 
+      {
          updatePreview();
       }
    }, 1000);
    
    // Force update after 5s max
-   previewUpdateTimer = setTimeout(() => {
+   previewUpdateTimer = setTimeout(() => 
+   {
       updatePreview();
    }, 5000);
 }
 
-async function updatePreview() {
-   if (!tempDirectory || !currentProjectPath) return;
+async function updatePreview() 
+{
+   if (!tempDirectory || !currentProjectPath) 
+   {
+      return;
+   }
    
-   try {
+   try 
+   {
       previewStatus.textContent = "Updating...";
       previewStatus.className = "preview-status running";
       
       // Write all editor contents to temp directory
-      for (const editor of editors.ignore) {
+      for (const editor of editors.ignore) 
+      {
          await window.electronAPI.writeTempFile(
             tempDirectory,
             "ignore.d",
@@ -489,7 +570,8 @@ async function updatePreview() {
          );
       }
       
-      for (const editor of editors.match) {
+      for (const editor of editors.match) 
+      {
          await window.electronAPI.writeTempFile(
             tempDirectory,
             "match.d",
@@ -501,23 +583,30 @@ async function updatePreview() {
       // Run mulle-match with environment variables
       const result = await window.electronAPI.runMulleMatch(currentProjectPath, tempDirectory, envVars);
       
-      if (result.success) {
+      if (result.success) 
+      {
          displayPreviewResults(result.files, result.count);
          previewStatus.textContent = `${result.count} files matched`;
          previewStatus.className = "preview-status ready";
-      } else {
+      }
+      else 
+      {
          showPreviewError(result.error || "mulle-match failed");
       }
-   } catch (err) {
+   }
+   catch (err) 
+   {
       console.error("Preview update error:", err);
       showPreviewError(err.message);
    }
 }
 
-function displayPreviewResults(files, count) {
+function displayPreviewResults(files, count) 
+{
    previewContent.innerHTML = "";
    
-   if (count === 0) {
+   if (count === 0) 
+   {
       const emptyMsg = document.createElement("div");
       emptyMsg.className = "preview-loading";
       emptyMsg.textContent = "No files matched";
@@ -525,7 +614,8 @@ function displayPreviewResults(files, count) {
       return;
    }
    
-   for (const file of files) {
+   for (const file of files) 
+   {
       const fileDiv = document.createElement("div");
       fileDiv.className = "preview-file";
       fileDiv.textContent = file;
@@ -533,7 +623,8 @@ function displayPreviewResults(files, count) {
    }
 }
 
-function showPreviewError(message) {
+function showPreviewError(message) 
+{
    previewStatus.textContent = `Error: ${message}`;
    previewStatus.className = "preview-status error";
    
@@ -546,12 +637,15 @@ function showPreviewError(message) {
 }
 
 // Environment variable management
-async function loadEnvironmentVariables() {
+async function loadEnvironmentVariables() 
+{
    const keys = ["MULLE_MATCH_FILENAMES", "MULLE_MATCH_IGNORE_PATH", "MULLE_MATCH_PATH"];
    
-   for (const key of keys) {
+   for (const key of keys) 
+   {
       const result = await window.electronAPI.getMulleEnv(currentProjectPath, key);
-      if (result.success) {
+      if (result.success) 
+      {
          envVars[key] = result.value;
          originalEnvVars[key] = result.value;
       }
@@ -567,48 +661,70 @@ async function loadEnvironmentVariables() {
    envPath.placeholder = "";
    
    // Setup change listeners
-   envFilenames.addEventListener("input", () => {
+   envFilenames.addEventListener("input", () => 
+   {
       envVars.MULLE_MATCH_FILENAMES = envFilenames.value;
       checkEnvModified(envFilenames, "MULLE_MATCH_FILENAMES");
       schedulePreviewUpdate();
    });
    
-   envIgnorePath.addEventListener("input", () => {
+   envIgnorePath.addEventListener("input", () => 
+   {
       envVars.MULLE_MATCH_IGNORE_PATH = envIgnorePath.value;
       checkEnvModified(envIgnorePath, "MULLE_MATCH_IGNORE_PATH");
       schedulePreviewUpdate();
    });
    
-   envPath.addEventListener("input", () => {
+   envPath.addEventListener("input", () => 
+   {
       envVars.MULLE_MATCH_PATH = envPath.value;
       checkEnvModified(envPath, "MULLE_MATCH_PATH");
       schedulePreviewUpdate();
    });
 }
 
-function checkEnvModified(inputElement, key) {
-   if (envVars[key] !== originalEnvVars[key]) {
+function checkEnvModified(inputElement, key) 
+{
+   if (envVars[key] !== originalEnvVars[key]) 
+   {
       inputElement.classList.add("modified");
-   } else {
+   }
+   else 
+   {
       inputElement.classList.remove("modified");
    }
 }
 
-async function saveEnvironmentVariables() {
+async function saveEnvironmentVariables() 
+{
    const keys = ["MULLE_MATCH_FILENAMES", "MULLE_MATCH_IGNORE_PATH", "MULLE_MATCH_PATH"];
    
-   for (const key of keys) {
-      if (envVars[key] !== originalEnvVars[key]) {
+   for (const key of keys) 
+   {
+      if (envVars[key] !== originalEnvVars[key]) 
+      {
          console.log(`Saving ${key}:`, envVars[key]);
          const result = await window.electronAPI.setMulleEnv(currentProjectPath, key, envVars[key]);
-         if (result.success) {
+         if (result.success) 
+         {
             originalEnvVars[key] = envVars[key];
             
             // Remove modified class
-            if (key === "MULLE_MATCH_FILENAMES") envFilenames.classList.remove("modified");
-            if (key === "MULLE_MATCH_IGNORE_PATH") envIgnorePath.classList.remove("modified");
-            if (key === "MULLE_MATCH_PATH") envPath.classList.remove("modified");
-         } else {
+            if (key === "MULLE_MATCH_FILENAMES") 
+            {
+               envFilenames.classList.remove("modified");
+            }
+            if (key === "MULLE_MATCH_IGNORE_PATH") 
+            {
+               envIgnorePath.classList.remove("modified");
+            }
+            if (key === "MULLE_MATCH_PATH") 
+            {
+               envPath.classList.remove("modified");
+            }
+         }
+         else 
+         {
             console.error(`Failed to save ${key}:`, result.error);
             alert(`Failed to save ${key}: ${result.error}`);
          }
@@ -617,15 +733,20 @@ async function saveEnvironmentVariables() {
 }
 
 // Recent projects management
-async function loadRecentProjects() {
+async function loadRecentProjects() 
+{
    const recentProjects = await window.electronAPI.getRecentProjects();
    const container = document.getElementById("recent-projects-list");
    
-   if (!container) return;
+   if (!container) 
+   {
+      return;
+   }
    
    container.innerHTML = "";
    
-   if (recentProjects.length === 0) {
+   if (recentProjects.length === 0) 
+   {
       const emptyMsg = document.createElement("div");
       emptyMsg.className = "recent-empty";
       emptyMsg.textContent = "No recent projects";
@@ -633,7 +754,8 @@ async function loadRecentProjects() {
       return;
    }
    
-   for (const projectPath of recentProjects) {
+   for (const projectPath of recentProjects) 
+   {
       const item = document.createElement("div");
       item.className = "recent-item";
       
@@ -652,7 +774,8 @@ async function loadRecentProjects() {
       item.appendChild(pathSpan);
       item.appendChild(nameSpan);
       
-      item.addEventListener("click", () => {
+      item.addEventListener("click", () => 
+      {
          loadProject(projectPath);
       });
       
@@ -661,11 +784,13 @@ async function loadRecentProjects() {
 }
 
 // Preferences management
-async function loadPreferences() {
+async function loadPreferences() 
+{
    preferences = await window.electronAPI.getPreferences();
 }
 
-function openPreferences() {
+function openPreferences() 
+{
    const modal = document.getElementById("preferences-modal");
    const showBadgesCheckbox = document.getElementById("pref-show-badges");
    
@@ -673,15 +798,18 @@ function openPreferences() {
    modal.classList.add("show");
 }
 
-document.getElementById("close-preferences-modal").addEventListener("click", () => {
+document.getElementById("close-preferences-modal").addEventListener("click", () => 
+{
    document.getElementById("preferences-modal").classList.remove("show");
 });
 
-document.getElementById("cancel-preferences").addEventListener("click", () => {
+document.getElementById("cancel-preferences").addEventListener("click", () => 
+{
    document.getElementById("preferences-modal").classList.remove("show");
 });
 
-document.getElementById("save-preferences").addEventListener("click", async () => {
+document.getElementById("save-preferences").addEventListener("click", async () => 
+{
    const showBadgesCheckbox = document.getElementById("pref-show-badges");
    
    preferences.showBadges = showBadgesCheckbox.checked;
@@ -695,8 +823,10 @@ document.getElementById("save-preferences").addEventListener("click", async () =
 });
 
 // Cleanup on window close
-window.addEventListener("beforeunload", async () => {
-   if (tempDirectory) {
+window.addEventListener("beforeunload", async () => 
+{
+   if (tempDirectory) 
+   {
       await window.electronAPI.cleanupTempDirectory(tempDirectory);
    }
 });

@@ -42,10 +42,11 @@ async function createWindow()
       },
    });
 
-   mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
-      const prefixes = ['[VERBOSE]', '[INFO]', '[WARN]', '[ERROR]'];
-      const prefix   = prefixes[level] ?? '[LOG]';
-      const out = console[ ['log','log','warn','error'][level] ] || console.log;
+   mainWindow.webContents.on("console-message", (event, level, message, line, sourceId) => 
+   {
+      const prefixes = ["[VERBOSE]", "[INFO]", "[WARN]", "[ERROR]"];
+      const prefix   = prefixes[level] ?? "[LOG]";
+      const out = console[ ["log","log","warn","error"][level] ] || console.log;
       out(`${prefix} [Renderer:${path.basename(sourceId)}:${line}] ${message}`);
    });
 
@@ -235,76 +236,106 @@ app.on("activate", () =>
 });
 
 // IPC handlers
-ipcMain.handle("open-directory-dialog", async () => {
+ipcMain.handle("open-directory-dialog", async () => 
+{
    const result = await dialog.showOpenDialog(mainWindow, {
       properties: ["openDirectory"]
    });
    return result;
 });
 
-ipcMain.handle("validate-project", async (event, projectPath) => {
-   try {
+ipcMain.handle("validate-project", async (event, projectPath) => 
+{
+   try 
+   {
       const mullePath = path.join(projectPath, ".mulle");
       const stats = await fs.stat(mullePath);
       return { valid: stats.isDirectory() };
-   } catch (err) {
-      return { valid: false, error: "No .mulle folder found" };
+   }
+   catch (err) 
+   {
+      return {
+         valid: false,
+         error: "No .mulle folder found" 
+      };
    }
 });
 
-ipcMain.handle("scan-pattern-files", async (event, projectPath) => {
+ipcMain.handle("scan-pattern-files", async (event, projectPath) => 
+{
    const result = {
       ignoreFiles: [],
-      matchFiles: []
+      matchFiles : []
    };
 
    const paths = [
-      { base: path.join(projectPath, ".mulle/etc/match"), location: "etc" },
-      { base: path.join(projectPath, ".mulle/share/match"), location: "share" }
+      {
+         base    : path.join(projectPath, ".mulle/etc/match"),
+         location: "etc" 
+      },
+      {
+         base    : path.join(projectPath, ".mulle/share/match"),
+         location: "share" 
+      }
    ];
 
-   for (const { base, location } of paths) {
+   for (const { base, location } of paths) 
+   {
       // Scan ignore.d
       const ignorePath = path.join(base, "ignore.d");
-      try {
+      try 
+      {
          const files = await fs.readdir(ignorePath);
-         for (const file of files) {
+         for (const file of files) 
+         {
             const filePath = path.join(ignorePath, file);
-            try {
+            try 
+            {
                const stats = await fs.lstat(filePath);
                result.ignoreFiles.push({
-                  name: file,
+                  name     : file,
                   location,
-                  path: filePath,
+                  path     : filePath,
                   isSymlink: stats.isSymbolicLink()
                });
-            } catch (err) {
+            }
+            catch (err) 
+            {
                // Skip files we can't stat
             }
          }
-      } catch (err) {
+      }
+      catch (err) 
+      {
          // Directory doesn't exist, skip
       }
 
       // Scan match.d
       const matchPath = path.join(base, "match.d");
-      try {
+      try 
+      {
          const files = await fs.readdir(matchPath);
-         for (const file of files) {
+         for (const file of files) 
+         {
             const filePath = path.join(matchPath, file);
-            try {
+            try 
+            {
                const stats = await fs.lstat(filePath);
                result.matchFiles.push({
-                  name: file,
+                  name     : file,
                   location,
-                  path: filePath,
+                  path     : filePath,
                   isSymlink: stats.isSymbolicLink()
                });
-            } catch (err) {
+            }
+            catch (err) 
+            {
                // Skip files we can't stat
             }
          }
-      } catch (err) {
+      }
+      catch (err) 
+      {
          // Directory doesn't exist, skip
       }
    }
@@ -312,47 +343,78 @@ ipcMain.handle("scan-pattern-files", async (event, projectPath) => {
    return result;
 });
 
-ipcMain.handle("read-file", async (event, filePath) => {
-   try {
+ipcMain.handle("read-file", async (event, filePath) => 
+{
+   try 
+   {
       const content = await fs.readFile(filePath, "utf-8");
-      return { success: true, content };
-   } catch (err) {
-      return { success: false, error: err.message };
+      return {
+         success: true,
+         content 
+      };
+   }
+   catch (err) 
+   {
+      return {
+         success: false,
+         error  : err.message 
+      };
    }
 });
 
-ipcMain.handle("create-temp-directory", async () => {
-   try {
+ipcMain.handle("create-temp-directory", async () => 
+{
+   try 
+   {
       const tempDir = path.join(os.tmpdir(), `mulle-patternfile-editor-${Date.now()}`);
       await fs.mkdir(tempDir, { recursive: true });
       await fs.mkdir(path.join(tempDir, "match.d"), { recursive: true });
       await fs.mkdir(path.join(tempDir, "ignore.d"), { recursive: true });
       await fs.mkdir(path.join(tempDir, "cache"), { recursive: true });
-      return { success: true, path: tempDir };
-   } catch (err) {
-      return { success: false, error: err.message };
+      return {
+         success: true,
+         path   : tempDir 
+      };
+   }
+   catch (err) 
+   {
+      return {
+         success: false,
+         error  : err.message 
+      };
    }
 });
 
-ipcMain.handle("write-temp-file", async (event, tempDir, subdir, filename, content) => {
-   try {
+ipcMain.handle("write-temp-file", async (event, tempDir, subdir, filename, content) => 
+{
+   try 
+   {
       const filePath = path.join(tempDir, subdir, filename);
       await fs.writeFile(filePath, content, "utf-8");
       return { success: true };
-   } catch (err) {
-      return { success: false, error: err.message };
+   }
+   catch (err) 
+   {
+      return {
+         success: false,
+         error  : err.message 
+      };
    }
 });
 
-ipcMain.handle("run-mulle-match", async (event, projectPath, tempDir, envVars = {}) => {
-   return new Promise((resolve) => {
+ipcMain.handle("run-mulle-match", async (event, projectPath, tempDir, envVars = {}) => 
+{
+   return new Promise((resolve) => 
+   {
       const cacheDir = path.join(tempDir, "cache");
       
       // Build -D flags for environment variables
       // Use single quotes to prevent premature shell expansion
       let envFlags = "";
-      for (const [key, value] of Object.entries(envVars)) {
-         if (value) {
+      for (const [key, value] of Object.entries(envVars)) 
+      {
+         if (value) 
+         {
             const escapedValue = value.replace(/'/g, "'\\''");
             envFlags += ` -D${key}='${escapedValue}'`;
          }
@@ -362,31 +424,45 @@ ipcMain.handle("run-mulle-match", async (event, projectPath, tempDir, envVars = 
       
       console.log("Running command:", command);
       
-      exec(command, { maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
-         if (error) {
+      exec(command, { maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => 
+      {
+         if (error) 
+         {
             resolve({ 
                success: false, 
-               error: error.message,
-               stderr: stderr 
+               error  : error.message,
+               stderr : stderr 
             });
-         } else {
-            const lines = stdout.trim().split('\n').filter(f => f.length > 0);
+         }
+         else 
+         {
+            const lines = stdout.trim().split("\n").filter(f => f.length > 0);
             resolve({ 
                success: true, 
-               files: lines,
-               count: lines.length 
+               files  : lines,
+               count  : lines.length 
             });
          }
       });
    });
 });
 
-ipcMain.handle("cleanup-temp-directory", async (event, tempDir) => {
-   try {
-      await fs.rm(tempDir, { recursive: true, force: true });
+ipcMain.handle("cleanup-temp-directory", async (event, tempDir) => 
+{
+   try 
+   {
+      await fs.rm(tempDir, {
+         recursive: true,
+         force    : true 
+      });
       return { success: true };
-   } catch (err) {
-      return { success: false, error: err.message };
+   }
+   catch (err) 
+   {
+      return {
+         success: false,
+         error  : err.message 
+      };
    }
 });
 
@@ -464,110 +540,194 @@ ipcMain.handle("set-preferences", async (event, prefs) =>
    }
    catch (err) 
    {
-      return { success: false, error: err.message };
+      return {
+         success: false,
+         error  : err.message 
+      };
    }
 });
 
-ipcMain.handle("get-mulle-env", async (event, projectPath, keyName) => {
-   return new Promise((resolve) => {
+ipcMain.handle("get-mulle-env", async (event, projectPath, keyName) => 
+{
+   return new Promise((resolve) => 
+   {
       const command = `cd "${projectPath}" && mulle-env get ${keyName}`;
       
       console.log("Running command:", command);
       
-      exec(command, (error, stdout, stderr) => {
-         if (error) {
-            resolve({ success: false, error: error.message, value: "" });
-         } else {
-            resolve({ success: true, value: stdout.trim() });
+      exec(command, (error, stdout, stderr) => 
+      {
+         if (error) 
+         {
+            resolve({
+               success: false,
+               error  : error.message,
+               value  : "" 
+            });
+         }
+         else 
+         {
+            resolve({
+               success: true,
+               value  : stdout.trim() 
+            });
          }
       });
    });
 });
 
-ipcMain.handle("set-mulle-env", async (event, projectPath, keyName, value) => {
-   return new Promise((resolve) => {
+ipcMain.handle("set-mulle-env", async (event, projectPath, keyName, value) => 
+{
+   return new Promise((resolve) => 
+   {
       // Escape the value properly for shell - use single quotes to prevent expansion
       const escapedValue = value.replace(/'/g, "'\\''");
       const command = `cd "${projectPath}" && mulle-env set ${keyName} '${escapedValue}'`;
       
       console.log("Running command:", command);
       
-      exec(command, (error, stdout, stderr) => {
-         if (error) {
-            resolve({ success: false, error: error.message });
-         } else {
+      exec(command, (error, stdout, stderr) => 
+      {
+         if (error) 
+         {
+            resolve({
+               success: false,
+               error  : error.message 
+            });
+         }
+         else 
+         {
             resolve({ success: true });
          }
       });
    });
 });
 
-ipcMain.handle("write-pattern-file", async (event, filePath, content) => {
-   try {
+ipcMain.handle("write-pattern-file", async (event, filePath, content) => 
+{
+   try 
+   {
       await fs.writeFile(filePath, content, "utf-8");
       return { success: true };
-   } catch (err) {
-      return { success: false, error: err.message };
+   }
+   catch (err) 
+   {
+      return {
+         success: false,
+         error  : err.message 
+      };
    }
 });
 
-ipcMain.handle("read-pattern-file", async (event, filePath) => {
-   try {
+ipcMain.handle("read-pattern-file", async (event, filePath) => 
+{
+   try 
+   {
       const content = await fs.readFile(filePath, "utf-8");
-      return { success: true, content };
-   } catch (err) {
-      return { success: false, error: err.message };
+      return {
+         success: true,
+         content 
+      };
+   }
+   catch (err) 
+   {
+      return {
+         success: false,
+         error  : err.message 
+      };
    }
 });
 
-ipcMain.handle("create-symlink", async (event, target, linkPath) => {
-   try {
+ipcMain.handle("create-symlink", async (event, target, linkPath) => 
+{
+   try 
+   {
       // Remove existing file/symlink if it exists
-      try {
+      try 
+      {
          await fs.unlink(linkPath);
-      } catch (err) {
+      }
+      catch (err) 
+      {
          // File doesn't exist, that's fine
       }
       
       await fs.symlink(target, linkPath);
       return { success: true };
-   } catch (err) {
-      return { success: false, error: err.message };
+   }
+   catch (err) 
+   {
+      return {
+         success: false,
+         error  : err.message 
+      };
    }
 });
 
-ipcMain.handle("remove-file", async (event, filePath) => {
-   try {
+ipcMain.handle("remove-file", async (event, filePath) => 
+{
+   try 
+   {
       await fs.unlink(filePath);
       return { success: true };
-   } catch (err) {
-      return { success: false, error: err.message };
+   }
+   catch (err) 
+   {
+      return {
+         success: false,
+         error  : err.message 
+      };
    }
 });
 
-ipcMain.handle("list-directory", async (event, dirPath) => {
-   try {
+ipcMain.handle("list-directory", async (event, dirPath) => 
+{
+   try 
+   {
       const files = await fs.readdir(dirPath);
-      return { success: true, files };
-   } catch (err) {
-      return { success: false, files: [], error: err.message };
+      return {
+         success: true,
+         files 
+      };
+   }
+   catch (err) 
+   {
+      return {
+         success: false,
+         files  : [],
+         error  : err.message 
+      };
    }
 });
 
-ipcMain.handle("remove-directory", async (event, dirPath) => {
-   try {
-      await fs.rm(dirPath, { recursive: true, force: true });
+ipcMain.handle("remove-directory", async (event, dirPath) => 
+{
+   try 
+   {
+      await fs.rm(dirPath, {
+         recursive: true,
+         force    : true 
+      });
       return { success: true };
-   } catch (err) {
-      return { success: false, error: err.message };
+   }
+   catch (err) 
+   {
+      return {
+         success: false,
+         error  : err.message 
+      };
    }
 });
 
-ipcMain.handle("file-exists", async (event, filePath) => {
-   try {
+ipcMain.handle("file-exists", async (event, filePath) => 
+{
+   try 
+   {
       await fs.access(filePath);
       return { exists: true };
-   } catch (err) {
+   }
+   catch (err) 
+   {
       return { exists: false };
    }
 });
