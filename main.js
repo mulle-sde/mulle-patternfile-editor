@@ -555,7 +555,7 @@ ipcMain.handle("get-mulle-env", async (event, projectPath, keyName) =>
       
       console.log("Running command:", command);
       
-      exec(command, (error, stdout, stderr) => 
+      exec(command, (error, stdout) => 
       {
          if (error) 
          {
@@ -586,7 +586,7 @@ ipcMain.handle("set-mulle-env", async (event, projectPath, keyName, value) =>
       
       console.log("Running command:", command);
       
-      exec(command, (error, stdout, stderr) => 
+      exec(command, (error) => 
       {
          if (error) 
          {
@@ -729,5 +729,21 @@ ipcMain.handle("file-exists", async (event, filePath) =>
    catch (err) 
    {
       return { exists: false };
+   }
+});
+
+ipcMain.handle("create-craft-directory", async (event, projectPath) => 
+{
+   try 
+   {
+      const craftPath = path.join(projectPath, ".mulle/etc/craft");
+      await fs.mkdir(path.join(craftPath, "match.d"), { recursive: true });
+      await fs.mkdir(path.join(craftPath, "ignore.d"), { recursive: true });
+      console.log("Created craft directory structure:", craftPath);
+      return { success: true };
+   }
+   catch (err) 
+   {
+      return { success: false, error: err.message };
    }
 });

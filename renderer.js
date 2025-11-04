@@ -13,10 +13,6 @@ const envIgnorePath = document.getElementById("env-ignore-path");
 const envPath = document.getElementById("env-path");
 
 let currentProjectPath = null;
-let patternFiles = {
-   ignoreFiles: [],
-   matchFiles : []
-};
 const editors = {
    ignore: [],
    match : []
@@ -62,9 +58,30 @@ window.electronAPI.onMenuPreferences(() =>
    openPreferences();
 });
 
+window.electronAPI.onMenuAddFile(() => 
+{
+   // Will be handled by + buttons with type context
+});
+
+window.electronAPI.onMenuDeleteFile(() => 
+{
+   deleteSelectedFile();
+});
+
 welcomeOpenBtn.addEventListener("click", () => 
 {
    openProject();
+});
+
+// Add file button handlers
+document.getElementById("add-ignore-btn").addEventListener("click", () => 
+{
+   addNewFile("ignore");
+});
+
+document.getElementById("add-match-btn").addEventListener("click", () => 
+{
+   addNewFile("match");
 });
 
 // Load recent projects and preferences on startup
@@ -91,6 +108,65 @@ async function loadProject(projectPath)
    {
       alert("Cannot open directory: No .mulle folder found.\n\nPlease select a valid mulle project directory.");
       return;
+   }
+   
+   // Check if match directories exist
+   const etcMatchExists = await window.electronAPI.fileExists(`${projectPath}/.mulle/etc/match`);
+   const shareMatchExists = await window.electronAPI.fileExists(`${projectPath}/.mulle/share/match`);
+   
+   // If no match directories, check for craft and offer to switch
+   if (!etcMatchExists.exists && !shareMatchExists.exists) 
+   {
+      console.log("No match directories found, checking for craft...");
+      
+      const etcCraftExists = await window.electronAPI.fileExists(`${projectPath}/.mulle/etc/craft`);
+      
+      if (etcCraftExists.exists) 
+      {
+         // etc/craft exists, switch to it
+         const switchToCraft = window.confirm(
+            "No pattern directories found in .mulle/etc/match or .mulle/share/match.\n\n" +
+            "However, .mulle/etc/craft exists.\n\n" +
+            "Switch to craft directory?\n" +
+            "(Will open .mulle/etc/craft instead)"
+         );
+         
+         if (switchToCraft) 
+         {
+            projectPath = `${projectPath}/.mulle/etc/craft`;
+            console.log("Switched to craft directory:", projectPath);
+         }
+         else 
+         {
+            return;
+         }
+      }
+      else 
+      {
+         // No craft either, offer to create it
+         const createCraft = window.confirm(
+            "No pattern directories found.\n\n" +
+            "Create .mulle/etc/craft directory structure?\n" +
+            "(Will create match.d and ignore.d folders)"
+         );
+         
+         if (createCraft) 
+         {
+            const result = await window.electronAPI.createCraftDirectory(projectPath);
+            if (!result.success) 
+            {
+               alert("Failed to create craft directory: " + result.error);
+               return;
+            }
+            
+            projectPath = `${projectPath}/.mulle/etc/craft`;
+            console.log("Created and switched to craft directory:", projectPath);
+         }
+         else 
+         {
+            return;
+         }
+      }
    }
    
    // Add to recent projects
@@ -350,6 +426,22 @@ async function saveAll()
 async function saveModifiedFiles() 
 {
    console.log("Step 1: Saving modified files...");
+   
+   // Delete files marked for deletion
+   if (window.filesToDelete && window.filesToDelete.length > 0) 
+   {
+      console.log("  Deleting marked files...");
+      for (const filePath of window.filesToDelete) 
+      {
+         const exists = await window.electronAPI.fileExists(filePath);
+         if (exists.exists) 
+         {
+            await window.electronAPI.removeFile(filePath);
+            console.log(`    Deleted: ${filePath}`);
+         }
+      }
+      window.filesToDelete = [];
+   }
    
    const allEditors = [...editors.ignore, ...editors.match];
    
@@ -634,6 +726,166 @@ function showPreviewError(message)
    errorDiv.style.color = "#e74c3c";
    errorDiv.textContent = `Error: ${message}`;
    previewContent.appendChild(errorDiv);
+}
+
+// File management
+function addNewFile(type) 
+{
+   /*
+    * FILE NAMING FORMAT: NN-type--category
+    * 
+    * NN = two-digit number for sorting (10, 20, 30, etc.)
+    * type = file type/purpose (e.g., "header", "source", "boring", "generated")
+    * category = category name (e.g., "all", "none", "private-headers")
+    * 
+    * Examples:
+    * - 10-boring--none
+    * - 65-generated--clib
+    * - 80-source--stage2-sources
+    * - 85-header--public-headers
+    */
+   
+   const fileName = prompt(
+      "Enter file name (format: NN-type--category)\n\n" +
+      "Examples:\n" +
+      "  10-boring--none\n" +
+      "  50-custom--myfiles\n" +
+      "  90-source--mysources",
+      "50-custom--myfiles"
+   );
+   
+   if (!fileName) 
+   {
+      return;
+   } // User cancelled
+   
+   // Validate format: NN-type--category
+   const validFormat = /^\d{2}-[a-z0-9]+-+[a-z0-9-]+$/i;
+   if (!validFormat.test(fileName)) 
+   {
+      alert(
+         "Invalid file name format!\n\n" +
+         "Format must be: NN-type--category\n" +
+         "- NN: two digits (00-99)\n" +
+         "- type: letters/numbers\n" +
+         "- --: double dash separator\n" +
+         "- category: letters/numbers/dashes"
+      );
+      return;
+   }
+   
+   // Check if file already exists
+   const editorList = editors[type];
+   const exists = editorList.find(e => e.file.name === fileName);
+   if (exists) 
+   {
+      alert(`File "${fileName}" already exists!`);
+      return;
+   }
+   
+   // Create new file in etc/ (we always create in etc, never in share)
+   const subdir = type === "ignore" ? "ignore.d" : "match.d";
+   const filePath = `${currentProjectPath}/.mulle/etc/match/${subdir}/${fileName}`;
+   
+   const newFile = {
+      name     : fileName,
+      location : "etc",
+      path     : filePath,
+      isSymlink: false
+   };
+   
+   // Create editor with empty content
+   createEditor(newFile, "", type);
+   
+   // Sort editors by filename
+   sortEditors(type);
+   
+   console.log(`Created new file: ${fileName} in ${type}`);
+}
+
+function sortEditors(type) 
+{
+   const editorArea = type === "ignore" ? ignoreEditorArea : matchEditorArea;
+   const editorList = editors[type];
+   
+   // Sort by filename
+   editorList.sort((a, b) => a.file.name.localeCompare(b.file.name));
+   
+   // Re-append in sorted order
+   editorArea.innerHTML = "";
+   for (const editor of editorList) 
+   {
+      editorArea.appendChild(editor.wrapper);
+   }
+}
+
+function deleteSelectedFile() 
+{
+   // Find focused editor
+   const activeElement = document.activeElement;
+   if (!activeElement || activeElement.tagName !== "TEXTAREA") 
+   {
+      alert("Please click in an editor to select a file to delete");
+      return;
+   }
+   
+   // Find which editor owns this textarea
+   let targetEditor = null;
+   let targetType = null;
+   
+   for (const type of ["ignore", "match"]) 
+   {
+      for (const editor of editors[type]) 
+      {
+         if (editor.textarea === activeElement) 
+         {
+            targetEditor = editor;
+            targetType = type;
+            break;
+         }
+      }
+      if (targetEditor) 
+      {
+         break;
+      }
+   }
+   
+   if (!targetEditor) 
+   {
+      alert("Could not determine which file to delete");
+      return;
+   }
+   
+   const fileName = targetEditor.file.name;
+   const confirm = window.confirm(
+      `Delete file "${fileName}"?\n\n` +
+      `This will remove the file from etc/ on next save.`
+   );
+   
+   if (!confirm) 
+   {
+      return;
+   }
+   
+   // Remove editor from UI
+   targetEditor.wrapper.remove();
+   
+   // Remove from editors list
+   const editorList = editors[targetType];
+   const index = editorList.indexOf(targetEditor);
+   if (index >= 0) 
+   {
+      editorList.splice(index, 1);
+   }
+   
+   // Mark for deletion (we'll delete on save)
+   if (!window.filesToDelete) 
+   {
+      window.filesToDelete = [];
+   }
+   window.filesToDelete.push(targetEditor.file.path);
+   
+   console.log(`Marked for deletion: ${fileName}`);
 }
 
 // Environment variable management

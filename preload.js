@@ -26,13 +26,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
    setMulleEnv: (projectPath, keyName, value) => ipcRenderer.invoke("set-mulle-env", projectPath, keyName, value),
    
    // File operations for saving
-   writePatternFile: (filePath, content) => ipcRenderer.invoke("write-pattern-file", filePath, content),
-   readPatternFile : (filePath) => ipcRenderer.invoke("read-pattern-file", filePath),
-   createSymlink   : (target, linkPath) => ipcRenderer.invoke("create-symlink", target, linkPath),
-   removeFile      : (filePath) => ipcRenderer.invoke("remove-file", filePath),
-   listDirectory   : (dirPath) => ipcRenderer.invoke("list-directory", dirPath),
-   removeDirectory : (dirPath) => ipcRenderer.invoke("remove-directory", dirPath),
-   fileExists      : (filePath) => ipcRenderer.invoke("file-exists", filePath),
+   writePatternFile     : (filePath, content) => ipcRenderer.invoke("write-pattern-file", filePath, content),
+   readPatternFile      : (filePath) => ipcRenderer.invoke("read-pattern-file", filePath),
+   createSymlink        : (target, linkPath) => ipcRenderer.invoke("create-symlink", target, linkPath),
+   removeFile           : (filePath) => ipcRenderer.invoke("remove-file", filePath),
+   listDirectory        : (dirPath) => ipcRenderer.invoke("list-directory", dirPath),
+   removeDirectory      : (dirPath) => ipcRenderer.invoke("remove-directory", dirPath),
+   fileExists           : (filePath) => ipcRenderer.invoke("file-exists", filePath),
+   createCraftDirectory : (projectPath) => ipcRenderer.invoke("create-craft-directory", projectPath),
    
    // Recent projects
    getRecentProjects  : () => ipcRenderer.invoke("get-recent-projects"),
