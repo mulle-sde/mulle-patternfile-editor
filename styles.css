@@ -294,6 +294,38 @@ body {
   padding: 20px;
 }
 
+.preview-env-vars {
+  padding: 8px 0;
+  margin-bottom: 8px;
+  border-bottom: 1px solid #dee2e6;
+}
+
+.preview-env-row {
+  padding: 1px 0;
+  color: #6c757d;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.preview-env-key {
+  color: #8e44ad;
+}
+
+.preview-env-eq {
+  color: #6c757d;
+}
+
+.preview-env-value {
+  color: #27ae60;
+}
+
+.preview-env-unset {
+  color: #95a5a6;
+  font-style: italic;
+}
+
 .preview-file {
   padding: 2px 0;
   color: #2c3e50;
@@ -407,6 +439,30 @@ body {
   padding: 8px 12px;
   background: #ecf0f1;
   border-bottom: 1px solid #ddd;
+  transition: background 0.3s ease;
+}
+
+/* 
+ * Visual hierarchy by file origin:
+ * - share/ files: Desaturated gray (viewing defaults)
+ * - etc/ symlinks: Light blue (linked to defaults)  
+ * - etc/ real files: Saturated blue (custom overrides)
+ */
+
+/* Headers for files that come from share/ (desaturated, subtle) */
+.editor-wrapper[data-location="share"] .editor-header {
+  background: #f5f6f7;
+  opacity: 0.85;
+}
+
+/* Headers for symlinked files from etc/ to share/ (light blue) */
+.editor-wrapper[data-location="etc"][data-symlink="true"] .editor-header {
+  background: #e8f2fc;
+}
+
+/* Headers for real files in etc/ (saturated blue - custom content) */
+.editor-wrapper[data-location="etc"][data-symlink="false"] .editor-header {
+  background: #d4e4f7;
 }
 
 .editor-title {
@@ -417,17 +473,79 @@ body {
   font-size: 13px;
   color: #2c3e50;
   font-family: monospace;
+  transition: all 0.2s ease;
+}
+
+/* Modified files get bold title and darker color */
+.editor-title.modified {
+  font-weight: 700;
+  color: #1a1a1a;
 }
 
 .editor-title.modified::after {
   content: "●";
   color: #e74c3c;
   margin-left: 4px;
+  font-size: 16px;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
 
 .editor-title-badges {
   display: flex;
   gap: 6px;
+}
+
+.editor-header-buttons {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.editor-delete-btn {
+  background: #e74c3c;
+  border: none;
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.editor-delete-btn:hover {
+  background: #c0392b;
+  transform: scale(1.05);
+}
+
+.editor-delete-btn.undelete {
+  background: #27ae60;
+}
+
+.editor-delete-btn.undelete:hover {
+  background: #229954;
+}
+
+.editor-wrapper.deleted {
+  opacity: 0.6;
+  background: #ffe6e6;
+  border-color: #e74c3c;
+}
+
+.editor-wrapper.deleted .editor-header {
+  background: #fdd;
+  border-bottom-color: #e74c3c;
+}
+
+.editor-wrapper.deleted .editor-title::before {
+  content: "🗑️ ";
 }
 
 .editor-close-btn {
@@ -446,7 +564,7 @@ body {
 }
 
 .editor-close-btn:hover {
-  background: #e74c3c;
+  background: #95a5a6;
   color: white;
 }
 
@@ -595,6 +713,188 @@ body {
   font-size: 12px;
   color: #6c757d;
   line-height: 1.5;
+}
+
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 500;
+  font-size: 14px;
+  color: #2c3e50;
+}
+
+.form-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  font-size: 14px;
+  font-family: monospace;
+  transition: border-color 0.2s;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: #3498db;
+  box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+}
+
+.form-input::placeholder {
+  color: #adb5bd;
+}
+
+.form-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: #6c757d;
+  font-style: italic;
+}
+
+.modal-help {
+  margin: 0 0 16px 0;
+  padding: 12px;
+  background: #e7f3ff;
+  border-left: 4px solid #3498db;
+  font-size: 13px;
+  color: #2c3e50;
+}
+
+.filename-preview {
+  margin-top: 16px;
+  padding: 12px;
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #495057;
+}
+
+.filename-preview strong {
+  font-family: monospace;
+  color: #2c3e50;
+  font-size: 14px;
+}
+
+.doctor-modal-content {
+  width: 600px;
+}
+
+.doctor-running {
+  text-align: center;
+  color: #7f8c8d;
+  font-style: italic;
+  padding: 20px;
+}
+
+.doctor-section {
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #eee;
+}
+
+.doctor-section:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.doctor-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #7f8c8d;
+  margin-bottom: 4px;
+}
+
+.doctor-value {
+  font-family: monospace;
+  font-size: 12px;
+  color: #2c3e50;
+  word-break: break-all;
+}
+
+.doctor-stats {
+  font-size: 12px;
+  color: #95a5a6;
+  margin-top: 4px;
+}
+
+.doctor-ok {
+  color: #27ae60;
+  font-weight: 500;
+}
+
+.doctor-warn {
+  color: #e67e22;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.doctor-error {
+  color: #e74c3c;
+  font-weight: 500;
+}
+
+.doctor-entries {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.doctor-entry {
+  padding: 8px 10px;
+  border-radius: 4px;
+  font-size: 13px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.doctor-entry-stale {
+  background: #fff8e1;
+  border: 1px solid #ffe082;
+}
+
+.doctor-entry-missing {
+  background: #fce4ec;
+  border: 1px solid #ef9a9a;
+}
+
+.doctor-entry-orphaned {
+  background: #f3e5f5;
+  border: 1px solid #ce93d8;
+}
+
+.doctor-entry-icon {
+  flex-shrink: 0;
+}
+
+.doctor-entry-name {
+  font-family: monospace;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.doctor-entry-location {
+  font-size: 11px;
+  color: #7f8c8d;
+  padding: 1px 6px;
+  background: #ecf0f1;
+  border-radius: 3px;
+}
+
+.doctor-entry-detail {
+  width: 100%;
+  font-size: 11px;
+  color: #7f8c8d;
+  font-family: monospace;
 }
 
 .hidden {

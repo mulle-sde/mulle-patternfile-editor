@@ -37,6 +37,13 @@ let preferences = {
    showBadges: false
 };
 
+// Deleted files tracking
+let showDeletedFiles = false;
+const deletedEditors = {
+   ignore: [],
+   match : []
+};
+
 // Menu event handlers
 window.electronAPI.onMenuOpen(() => 
 {
@@ -48,7 +55,33 @@ window.electronAPI.onMenuSave(() =>
    saveAll();
 });
 
+window.electronAPI.onMenuRevert(() => 
+{
+   revertToSaved();
+});
+
+window.electronAPI.onMenuRevertDefaults(() => 
+{
+   revertToDefaults();
+});
+
+window.electronAPI.onMenuToggleDeleted((checked) => 
+{
+   showDeletedFiles = checked;
+   updateDeletedFilesVisibility();
+});
+
+window.electronAPI.onMenuDoctor(() => 
+{
+   runDoctor();
+});
+
 window.electronAPI.onOpenRecentProject((projectPath) => 
+{
+   loadProject(projectPath);
+});
+
+window.electronAPI.onOpenProjectPath((projectPath) => 
 {
    loadProject(projectPath);
 });
@@ -175,6 +208,13 @@ async function loadProject(projectPath)
    currentProjectPath = projectPath;
    projectPathEl.textContent = projectPath;
    
+   // Clear editors and deleted files state
+   editors.ignore = [];
+   editors.match = [];
+   deletedEditors.ignore = [];
+   deletedEditors.match = [];
+   window.filesToDelete = [];
+   
    // Scan for pattern files
    try 
    {
@@ -195,6 +235,9 @@ async function loadProject(projectPath)
       await openAllFiles(files.ignoreFiles, "ignore");
       await openAllFiles(files.matchFiles, "match");
       
+      // Update menu state based on etc/ files
+      await updateMenuState();
+      
       // Initialize preview
       await initializePreview();
       
@@ -208,35 +251,104 @@ async function loadProject(projectPath)
    }
 }
 
+async function updateMenuState() 
+{
+   // Check if we have any etc/ files
+   let hasEtcFiles = false;
+   
+   for (const editor of editors.ignore) 
+   {
+      if (editor.file.location === "etc") 
+      {
+         hasEtcFiles = true;
+         break;
+      }
+   }
+   
+   if (!hasEtcFiles) 
+   {
+      for (const editor of editors.match) 
+      {
+         if (editor.file.location === "etc") 
+         {
+            hasEtcFiles = true;
+            break;
+         }
+      }
+   }
+   
+   // Check if we have any share/ files
+   let hasShareFiles = false;
+   
+   for (const editor of editors.ignore) 
+   {
+      if (editor.file.location === "share") 
+      {
+         hasShareFiles = true;
+         break;
+      }
+   }
+   
+   if (!hasShareFiles) 
+   {
+      for (const editor of editors.match) 
+      {
+         if (editor.file.location === "share") 
+         {
+            hasShareFiles = true;
+            break;
+         }
+      }
+   }
+   
+   // Only enable "Revert to Defaults" if we have etc/ files AND share/ files
+   // (No point reverting to defaults if there are no defaults!)
+   const enableRevertDefaults = hasEtcFiles && hasShareFiles;
+   
+   // Update the menu
+   await window.electronAPI.updateMenuState({ hasEtcFiles: enableRevertDefaults });
+}
+
 async function openAllFiles(files, type) 
 {
    const editorArea = type === "ignore" ? ignoreEditorArea : matchEditorArea;
    
-   // Filter files: etc overrides share (by filename)
-   const fileMap = new Map();
+   let filesToShow;
    
-   // First pass: add all share files
-   for (const file of files) 
+   if (preferences.showBadges) 
    {
-      if (file.location === "share") 
+      // Show all files (both etc and share versions)
+      filesToShow = files;
+   }
+   else 
+   {
+      // Filter files: etc overrides share (by filename)
+      const fileMap = new Map();
+      
+      // First pass: add all share files
+      for (const file of files) 
       {
-         fileMap.set(file.name, file);
+         if (file.location === "share") 
+         {
+            fileMap.set(file.name, file);
+         }
       }
+      
+      // Second pass: etc files override share files with same name
+      for (const file of files) 
+      {
+         if (file.location === "etc") 
+         {
+            fileMap.set(file.name, file);
+         }
+      }
+      
+      filesToShow = Array.from(fileMap.values());
    }
    
-   // Second pass: etc files override share files with same name
-   for (const file of files) 
-   {
-      if (file.location === "etc") 
-      {
-         fileMap.set(file.name, file);
-      }
-   }
+   filesToShow.sort((a, b) => a.name.localeCompare(b.name));
    
-   const uniqueFiles = Array.from(fileMap.values());
-   uniqueFiles.sort((a, b) => a.name.localeCompare(b.name));
-   
-   if (uniqueFiles.length === 0) 
+   if (filesToShow.length === 0) 
    {
       const emptyMsg = document.createElement("div");
       emptyMsg.className = "empty-message";
@@ -245,7 +357,7 @@ async function openAllFiles(files, type)
       return;
    }
    
-   for (const file of uniqueFiles) 
+   for (const file of filesToShow) 
    {
       const result = await window.electronAPI.readFile(file.path);
       if (result.success) 
@@ -266,6 +378,10 @@ function createEditor(file, content, type)
    
    const editorWrapper = document.createElement("div");
    editorWrapper.className = "editor-wrapper";
+   
+   // Add data attributes for styling based on file origin
+   editorWrapper.setAttribute("data-location", file.location);
+   editorWrapper.setAttribute("data-symlink", file.isSymlink ? "true" : "false");
    
    const editorHeader = document.createElement("div");
    editorHeader.className = "editor-header";
@@ -300,12 +416,28 @@ function createEditor(file, content, type)
    
    editorHeader.appendChild(editorTitle);
    
+   const headerButtons = document.createElement("div");
+   headerButtons.className = "editor-header-buttons";
+   
+   // Only show DELETE button for files in etc (not share)
+   if (file.location === "etc") 
+   {
+      const deleteBtn = document.createElement("button");
+      deleteBtn.className = "editor-delete-btn";
+      deleteBtn.textContent = "DELETE";
+      deleteBtn.title = file.isSymlink ? "Remove symlink" : "Delete file";
+      deleteBtn.addEventListener("click", () => deleteEditorFile(file, type));
+      headerButtons.appendChild(deleteBtn);
+   }
+   
    const closeBtn = document.createElement("button");
    closeBtn.className = "editor-close-btn";
    closeBtn.textContent = "×";
    closeBtn.title = "Close editor";
    closeBtn.addEventListener("click", () => closeEditor(file, type));
-   editorHeader.appendChild(closeBtn);
+   headerButtons.appendChild(closeBtn);
+   
+   editorHeader.appendChild(headerButtons);
    
    const textarea = document.createElement("textarea");
    textarea.className = "editor-textarea";
@@ -323,6 +455,13 @@ function createEditor(file, content, type)
       {
          editor.modified = true;
          editorTitle.classList.add("modified");
+         
+         // Change header to saturated color when editing starts
+         if (file.location !== "etc" || file.isSymlink) 
+         {
+            editorWrapper.setAttribute("data-location", "etc");
+            editorWrapper.setAttribute("data-symlink", "false");
+         }
       }
       // Auto-resize on input
       const newLineCount = textarea.value.split("\n").length;
@@ -445,6 +584,9 @@ async function saveModifiedFiles()
    
    const allEditors = [...editors.ignore, ...editors.match];
    
+   // Track which etc directories need symlink creation (first file being saved)
+   const needsSymlinks = new Set();
+   
    for (const editor of allEditors) 
    {
       if (!editor.modified) 
@@ -459,41 +601,90 @@ async function saveModifiedFiles()
       
       // Determine target path
       let targetPath = file.path;
+      let sharePath = null;
       
       // If file is in share/, we must create/update in etc/
       if (file.location === "share") 
       {
-         const etcDir = file.path.includes("ignore.d") 
-            ? `${currentProjectPath}/.mulle/etc/match/ignore.d`
-            : `${currentProjectPath}/.mulle/etc/match/match.d`;
+         const subdir = file.path.includes("ignore.d") ? "ignore.d" : "match.d";
+         const etcDir = `${currentProjectPath}/.mulle/etc/match/${subdir}`;
+         
+         // Check if this is the first file being created in etc/ for this subdir
+         const etcDirExists = await window.electronAPI.fileExists(etcDir);
+         if (!etcDirExists.exists) 
+         {
+            needsSymlinks.add(subdir);
+            console.log(`    First file in etc/${subdir}, will create symlinks`);
+         }
          
          targetPath = `${etcDir}/${file.name}`;
+         sharePath = file.path;
          console.log(`    Moving to etc: ${targetPath}`);
       }
-      
-      // If target was a symlink, remove it first
-      if (file.isSymlink || file.location === "share") 
+      else 
       {
-         const exists = await window.electronAPI.fileExists(targetPath);
-         if (exists.exists) 
+         // File is in etc/, check if there's a corresponding share file
+         const subdir = file.path.includes("ignore.d") ? "ignore.d" : "match.d";
+         sharePath = `${currentProjectPath}/.mulle/share/match/${subdir}/${file.name}`;
+      }
+      
+      // Check if content is identical to share version
+      let identicalToShare = false;
+      if (sharePath) 
+      {
+         const shareExists = await window.electronAPI.fileExists(sharePath);
+         if (shareExists.exists) 
          {
-            await window.electronAPI.removeFile(targetPath);
-            console.log(`    Removed old file/symlink`);
+            const shareContent = await window.electronAPI.readPatternFile(sharePath);
+            if (shareContent.success && shareContent.content === content) 
+            {
+               identicalToShare = true;
+               console.log(`    Content identical to share version`);
+            }
          }
       }
       
-      // Write the content
-      const result = await window.electronAPI.writePatternFile(targetPath, content);
-      if (!result.success) 
+      // Remove existing file/symlink
+      const exists = await window.electronAPI.fileExists(targetPath);
+      if (exists.exists) 
       {
-         throw new Error(`Failed to write ${file.name}: ${result.error}`);
+         await window.electronAPI.removeFile(targetPath);
+         console.log(`    Removed old file/symlink`);
+      }
+      
+      if (identicalToShare) 
+      {
+         // Create symlink instead of writing file
+         const subdir = file.path.includes("ignore.d") ? "ignore.d" : "match.d";
+         const relativeTarget = `../../../share/match/${subdir}/${file.name}`;
+         const symlinkResult = await window.electronAPI.createSymlink(relativeTarget, targetPath);
+         
+         if (!symlinkResult.success) 
+         {
+            throw new Error(`Failed to create symlink ${file.name}: ${symlinkResult.error}`);
+         }
+         console.log(`    ✓ Created symlink to share`);
+      }
+      else 
+      {
+         // Write the content as a real file
+         const result = await window.electronAPI.writePatternFile(targetPath, content);
+         if (!result.success) 
+         {
+            throw new Error(`Failed to write ${file.name}: ${result.error}`);
+         }
+         console.log(`    ✓ Saved as file`);
       }
       
       // Mark as saved
       editor.modified = false;
       editor.wrapper.querySelector(".editor-title").classList.remove("modified");
-      
-      console.log(`    ✓ Saved`);
+   }
+   
+   // Create symlinks to share files for any new etc directories
+   for (const subdir of needsSymlinks) 
+   {
+      await createShareSymlinks(subdir);
    }
 }
 
@@ -672,12 +863,16 @@ async function updatePreview()
          );
       }
       
-      // Run mulle-match with environment variables
-      const result = await window.electronAPI.runMulleMatch(currentProjectPath, tempDirectory, envVars);
+      // Run mulle-match and evaluate env vars in parallel
+      const [result, evalResult] = await Promise.all([
+         window.electronAPI.runMulleMatch(currentProjectPath, tempDirectory, envVars),
+         window.electronAPI.evaluateEnvVars(currentProjectPath),
+      ]);
+      const evaluatedVars = evalResult.success ? evalResult.values : null;
       
       if (result.success) 
       {
-         displayPreviewResults(result.files, result.count);
+         displayPreviewResults(result.files, result.count, evaluatedVars);
          previewStatus.textContent = `${result.count} files matched`;
          previewStatus.className = "preview-status ready";
       }
@@ -693,9 +888,52 @@ async function updatePreview()
    }
 }
 
-function displayPreviewResults(files, count) 
+function displayPreviewResults(files, count, evaluatedVars) 
 {
    previewContent.innerHTML = "";
+   
+   // Always show evaluated environment variables at the top
+   const envSection = document.createElement("div");
+   envSection.className = "preview-env-vars";
+   
+   const envKeys = ["MULLE_MATCH_FILENAMES", "MULLE_MATCH_IGNORE_PATH", "MULLE_MATCH_PATH"];
+   for (const key of envKeys) 
+   {
+      const row = document.createElement("div");
+      row.className = "preview-env-row";
+      
+      const keySpan = document.createElement("span");
+      keySpan.className = "preview-env-key";
+      keySpan.textContent = key;
+      
+      const eqSpan = document.createElement("span");
+      eqSpan.className = "preview-env-eq";
+      eqSpan.textContent = "=";
+      
+      const valSpan = document.createElement("span");
+      valSpan.className = "preview-env-value";
+      
+      if (evaluatedVars && evaluatedVars[key] !== undefined) 
+      {
+         valSpan.textContent = evaluatedVars[key] || "(unset)";
+         if (!evaluatedVars[key]) 
+         {
+            valSpan.classList.add("preview-env-unset");
+         }
+      }
+      else 
+      {
+         valSpan.textContent = "(unavailable)";
+         valSpan.classList.add("preview-env-unset");
+      }
+      
+      row.appendChild(keySpan);
+      row.appendChild(eqSpan);
+      row.appendChild(valSpan);
+      envSection.appendChild(row);
+   }
+   
+   previewContent.appendChild(envSection);
    
    if (count === 0) 
    {
@@ -729,63 +967,88 @@ function showPreviewError(message)
 }
 
 // File management
+let currentAddFileType = null;
+
 function addNewFile(type) 
 {
-   /*
-    * FILE NAMING FORMAT: NN-type--category
-    * 
-    * NN = two-digit number for sorting (10, 20, 30, etc.)
-    * type = file type/purpose (e.g., "header", "source", "boring", "generated")
-    * category = category name (e.g., "all", "none", "private-headers")
-    * 
-    * Examples:
-    * - 10-boring--none
-    * - 65-generated--clib
-    * - 80-source--stage2-sources
-    * - 85-header--public-headers
-    */
+   currentAddFileType = type;
    
-   const fileName = prompt(
-      "Enter file name (format: NN-type--category)\n\n" +
-      "Examples:\n" +
-      "  10-boring--none\n" +
-      "  50-custom--myfiles\n" +
-      "  90-source--mysources",
-      "50-custom--myfiles"
-   );
+   // Reset form
+   document.getElementById("file-priority").value = "50";
+   document.getElementById("file-type").value = "";
+   document.getElementById("file-category").value = "";
+   updateFilenamePreview();
    
-   if (!fileName) 
+   // Show modal
+   document.getElementById("add-file-modal").classList.add("show");
+   
+   // Focus first input
+   setTimeout(() => document.getElementById("file-priority").focus(), 100);
+}
+
+function updateFilenamePreview() 
+{
+   const priority = document.getElementById("file-priority").value || "NN";
+   const type = document.getElementById("file-type").value || "type";
+   const category = document.getElementById("file-category").value || "category";
+   
+   const filename = `${priority}-${type}--${category}`;
+   document.getElementById("filename-preview").textContent = filename;
+}
+
+async function createNewFile() 
+{
+   const priority = document.getElementById("file-priority").value.trim();
+   const type = document.getElementById("file-type").value.trim();
+   const category = document.getElementById("file-category").value.trim();
+   
+   // Validate priority (must be exactly 2 digits)
+   if (!/^\d{2}$/.test(priority)) 
    {
-      return;
-   } // User cancelled
-   
-   // Validate format: NN-type--category
-   const validFormat = /^\d{2}-[a-z0-9]+-+[a-z0-9-]+$/i;
-   if (!validFormat.test(fileName)) 
-   {
-      alert(
-         "Invalid file name format!\n\n" +
-         "Format must be: NN-type--category\n" +
-         "- NN: two digits (00-99)\n" +
-         "- type: letters/numbers\n" +
-         "- --: double dash separator\n" +
-         "- category: letters/numbers/dashes"
-      );
+      alert("Priority must be exactly 2 digits (00-99)\n\nExamples: 10, 50, 99");
+      document.getElementById("file-priority").focus();
       return;
    }
    
-   // Check if file already exists
-   const editorList = editors[type];
+   // Validate type (identifier: letters, numbers, underscores only)
+   if (!/^[a-z0-9_]+$/i.test(type)) 
+   {
+      alert("Type must be a valid identifier:\n- Letters (a-z, A-Z)\n- Numbers (0-9)\n- Underscores (_)\n\nNo spaces, hyphens, or special characters allowed.");
+      document.getElementById("file-type").focus();
+      return;
+   }
+   
+   // Validate category (identifier: letters, numbers, underscores only)
+   if (!/^[a-z0-9_]+$/i.test(category)) 
+   {
+      alert("Category must be a valid identifier:\n- Letters (a-z, A-Z)\n- Numbers (0-9)\n- Underscores (_)\n\nNo spaces, hyphens, or special characters allowed.");
+      document.getElementById("file-category").focus();
+      return;
+   }
+   
+   const fileName = `${priority}-${type}--${category}`;
+   
+   // Check if file already exists in ANY location (etc or share)
+   const editorList = editors[currentAddFileType];
    const exists = editorList.find(e => e.file.name === fileName);
    if (exists) 
    {
-      alert(`File "${fileName}" already exists!`);
+      const location = exists.file.location === "share" ? "share (read-only)" : "etc";
+      alert(`File "${fileName}" already exists in ${location}!\n\nPlease choose a different name.`);
       return;
    }
    
-   // Create new file in etc/ (we always create in etc, never in share)
-   const subdir = type === "ignore" ? "ignore.d" : "match.d";
-   const filePath = `${currentProjectPath}/.mulle/etc/match/${subdir}/${fileName}`;
+   // Close modal
+   document.getElementById("add-file-modal").classList.remove("show");
+   
+   // Create new file in etc/
+   const subdir = currentAddFileType === "ignore" ? "ignore.d" : "match.d";
+   const etcDir = `${currentProjectPath}/.mulle/etc/match/${subdir}`;
+   const filePath = `${etcDir}/${fileName}`;
+   
+   // Check if this is the first file being created in etc/ for this subdir
+   const etcDirExists = await window.electronAPI.fileExists(etcDir);
+   const needsSymlinkCreation = !etcDirExists.exists;
    
    const newFile = {
       name     : fileName,
@@ -795,12 +1058,87 @@ function addNewFile(type)
    };
    
    // Create editor with empty content
-   createEditor(newFile, "", type);
+   createEditor(newFile, "", currentAddFileType);
+   
+   // Mark as modified so it gets saved
+   const editor = editorList.find(e => e.file.path === filePath);
+   if (editor) 
+   {
+      editor.modified = true;
+      editor.wrapper.querySelector(".editor-title").classList.add("modified");
+   }
+   
+   // If this is the first file in etc/, we need to create symlinks to all share files
+   if (needsSymlinkCreation) 
+   {
+      await createShareSymlinks(subdir);
+   }
    
    // Sort editors by filename
-   sortEditors(type);
+   sortEditors(currentAddFileType);
    
-   console.log(`Created new file: ${fileName} in ${type}`);
+   // Scroll to the new editor and focus it
+   const newEditor = editorList.find(e => e.file.path === filePath);
+   if (newEditor) 
+   {
+      newEditor.wrapper.scrollIntoView({
+         behavior: "smooth",
+         block   : "center" 
+      });
+      setTimeout(() => newEditor.textarea.focus(), 300);
+   }
+   
+   console.log(`Created new file: ${fileName} in ${currentAddFileType}`);
+}
+
+async function createShareSymlinks(subdir) 
+{
+   console.log(`Creating symlinks to share files in ${subdir}...`);
+   
+   const sharePath = `${currentProjectPath}/.mulle/share/match/${subdir}`;
+   
+   // Check if share directory exists
+   const shareExists = await window.electronAPI.fileExists(sharePath);
+   if (!shareExists.exists) 
+   {
+      console.log(`  No share/${subdir} directory, skipping symlink creation`);
+      return;
+   }
+   
+   // Get all files in share
+   const shareResult = await window.electronAPI.listDirectory(sharePath);
+   if (!shareResult.success || shareResult.files.length === 0) 
+   {
+      console.log(`  No files in share/${subdir}, skipping symlink creation`);
+      return;
+   }
+   
+   const etcPath = `${currentProjectPath}/.mulle/etc/match/${subdir}`;
+   
+   // Create symlinks for all share files
+   for (const filename of shareResult.files) 
+   {
+      const etcFilePath = `${etcPath}/${filename}`;
+      const relativeTarget = `../../../share/match/${subdir}/${filename}`;
+      
+      // Check if file already exists in etc (shouldn't happen, but be safe)
+      const exists = await window.electronAPI.fileExists(etcFilePath);
+      if (exists.exists) 
+      {
+         console.log(`    ${filename}: already exists in etc/, skipping`);
+         continue;
+      }
+      
+      const symlinkResult = await window.electronAPI.createSymlink(relativeTarget, etcFilePath);
+      if (symlinkResult.success) 
+      {
+         console.log(`    ✓ Created symlink: ${filename} -> share`);
+      }
+      else 
+      {
+         console.error(`    ✗ Failed to create symlink for ${filename}: ${symlinkResult.error}`);
+      }
+   }
 }
 
 function sortEditors(type) 
@@ -811,11 +1149,336 @@ function sortEditors(type)
    // Sort by filename
    editorList.sort((a, b) => a.file.name.localeCompare(b.file.name));
    
-   // Re-append in sorted order
+   // Re-append in sorted order (active editors only)
    editorArea.innerHTML = "";
    for (const editor of editorList) 
    {
       editorArea.appendChild(editor.wrapper);
+   }
+   
+   // Append deleted editors at the end (if they exist)
+   const deletedList = deletedEditors[type];
+   deletedList.sort((a, b) => a.file.name.localeCompare(b.file.name));
+   for (const editor of deletedList) 
+   {
+      editorArea.appendChild(editor.wrapper);
+      // Apply visibility setting
+      editor.wrapper.style.display = showDeletedFiles ? "" : "none";
+   }
+}
+
+function deleteEditorFile(file, type) 
+{
+   const fileName = file.name;
+   const fileType = file.isSymlink ? "symlink" : "file";
+   const confirm = window.confirm(
+      `Delete ${fileType} "${fileName}"?\n\n` +
+      `This will remove the ${fileType} from etc/ on next save.`
+   );
+   
+   if (!confirm) 
+   {
+      return;
+   }
+   
+   // Find the editor
+   const editorList = editors[type];
+   const editor = editorList.find(e => e.file.path === file.path);
+   
+   if (!editor) 
+   {
+      alert("Could not find editor to delete");
+      return;
+   }
+   
+   // Mark as deleted (add red background and change header)
+   editor.wrapper.classList.add("deleted");
+   editor.deleted = true;
+   
+   // Change DELETE button to UNDELETE
+   const deleteBtn = editor.wrapper.querySelector(".editor-delete-btn");
+   if (deleteBtn) 
+   {
+      deleteBtn.textContent = "UNDELETE";
+      deleteBtn.classList.add("undelete");
+      deleteBtn.onclick = () => undeleteEditorFile(file, type);
+   }
+   
+   // Remove from active editors list and add to deleted list
+   const index = editorList.indexOf(editor);
+   if (index >= 0) 
+   {
+      editorList.splice(index, 1);
+   }
+   deletedEditors[type].push(editor);
+   
+   // Mark for deletion (we'll delete on save)
+   if (!window.filesToDelete) 
+   {
+      window.filesToDelete = [];
+   }
+   window.filesToDelete.push(file.path);
+   
+   // Update visibility based on show deleted flag
+   updateDeletedFilesVisibility();
+   
+   console.log(`Marked for deletion: ${fileName}`);
+}
+
+function undeleteEditorFile(file, type) 
+{
+   const deletedList = deletedEditors[type];
+   const editor = deletedList.find(e => e.file.path === file.path);
+   
+   if (!editor) 
+   {
+      alert("Could not find deleted editor");
+      return;
+   }
+   
+   // Remove deleted styling
+   editor.wrapper.classList.remove("deleted");
+   editor.deleted = false;
+   
+   // Change UNDELETE button back to DELETE
+   const undeleteBtn = editor.wrapper.querySelector(".editor-delete-btn");
+   if (undeleteBtn) 
+   {
+      undeleteBtn.textContent = "DELETE";
+      undeleteBtn.classList.remove("undelete");
+      undeleteBtn.onclick = () => deleteEditorFile(file, type);
+   }
+   
+   // Move from deleted list back to active editors
+   const index = deletedList.indexOf(editor);
+   if (index >= 0) 
+   {
+      deletedList.splice(index, 1);
+   }
+   editors[type].push(editor);
+   
+   // Remove from deletion queue
+   if (window.filesToDelete) 
+   {
+      const deleteIndex = window.filesToDelete.indexOf(file.path);
+      if (deleteIndex >= 0) 
+      {
+         window.filesToDelete.splice(deleteIndex, 1);
+      }
+   }
+   
+   // Re-sort and ensure it's visible
+   sortEditors(type);
+   editor.wrapper.style.display = "";
+   
+   console.log(`Undeleted: ${file.name}`);
+}
+
+function updateDeletedFilesVisibility() 
+{
+   for (const type of ["ignore", "match"]) 
+   {
+      for (const editor of deletedEditors[type]) 
+      {
+         editor.wrapper.style.display = showDeletedFiles ? "" : "none";
+      }
+   }
+}
+
+async function revertToSaved() 
+{
+   if (!currentProjectPath) 
+   {
+      return;
+   }
+   
+   // Count changes
+   let modifiedCount = 0;
+   const deletedCount = deletedEditors.ignore.length + deletedEditors.match.length;
+   
+   for (const editor of [...editors.ignore, ...editors.match]) 
+   {
+      if (editor.modified) 
+      {
+         modifiedCount++;
+      }
+   }
+   
+   if (modifiedCount === 0 && deletedCount === 0) 
+   {
+      alert("No unsaved changes to revert.");
+      return;
+   }
+   
+   const confirm = window.confirm(
+      `Revert all changes?\n\n` +
+      `This will discard:\n` +
+      `- ${modifiedCount} modified file(s)\n` +
+      `- ${deletedCount} deleted file(s)\n\n` +
+      `This action cannot be undone.`
+   );
+   
+   if (!confirm) 
+   {
+      return;
+   }
+   
+   // Clear deletion queue
+   window.filesToDelete = [];
+   
+   // Reload the entire project
+   await loadProject(currentProjectPath);
+   
+   console.log("Reverted to saved state");
+}
+
+async function revertToDefaults() 
+{
+   if (!currentProjectPath) 
+   {
+      return;
+   }
+   
+   // Count files in etc/
+   let etcIgnoreCount = 0;
+   let etcMatchCount = 0;
+   
+   for (const editor of editors.ignore) 
+   {
+      if (editor.file.location === "etc") 
+      {
+         etcIgnoreCount++;
+      }
+   }
+   
+   for (const editor of editors.match) 
+   {
+      if (editor.file.location === "etc") 
+      {
+         etcMatchCount++;
+      }
+   }
+   
+   // Add deleted files that were in etc/
+   for (const editor of deletedEditors.ignore) 
+   {
+      if (editor.file.location === "etc") 
+      {
+         etcIgnoreCount++;
+      }
+   }
+   
+   for (const editor of deletedEditors.match) 
+   {
+      if (editor.file.location === "etc") 
+      {
+         etcMatchCount++;
+      }
+   }
+   
+   const totalEtcFiles = etcIgnoreCount + etcMatchCount;
+   
+   if (totalEtcFiles === 0) 
+   {
+      alert("No custom overrides found.\n\nYou are already using the defaults from share/.");
+      return;
+   }
+   
+   const confirm = window.confirm(
+      `⚠️  REVERT TO DEFAULTS  ⚠️\n\n` +
+      `This will DELETE ALL custom pattern files in etc/:\n\n` +
+      `- ${etcIgnoreCount} ignore pattern file(s)\n` +
+      `- ${etcMatchCount} match pattern file(s)\n\n` +
+      `After this, you will ONLY have the shared defaults from share/.\n\n` +
+      `What this means:\n` +
+      `• All files in .mulle/etc/match/ will be PERMANENTLY DELETED\n` +
+      `• You will lose all custom pattern configurations\n` +
+      `• You will revert to the project's default patterns\n` +
+      `• Any unsaved changes will also be lost\n\n` +
+      `This action CANNOT be undone!\n\n` +
+      `Are you absolutely sure?`
+   );
+   
+   if (!confirm) 
+   {
+      return;
+   }
+   
+   // Double confirmation for safety
+   const finalConfirm = window.confirm(
+      `FINAL CONFIRMATION\n\n` +
+      `You are about to delete ${totalEtcFiles} custom pattern file(s).\n\n` +
+      `Type or think "yes" to proceed...`
+   );
+   
+   if (!finalConfirm) 
+   {
+      console.log("Revert to defaults cancelled by user");
+      return;
+   }
+   
+   try 
+   {
+      console.log("=== Reverting to Defaults ===");
+      
+      // Remove etc/match directories
+      const etcMatchPath = `${currentProjectPath}/.mulle/etc/match`;
+      const etcMatchExists = await window.electronAPI.fileExists(etcMatchPath);
+      
+      if (etcMatchExists.exists) 
+      {
+         const ignoreDir = `${etcMatchPath}/ignore.d`;
+         const matchDir = `${etcMatchPath}/match.d`;
+         
+         // Remove ignore.d directory
+         const ignoreDirExists = await window.electronAPI.fileExists(ignoreDir);
+         if (ignoreDirExists.exists) 
+         {
+            const result = await window.electronAPI.removeDirectory(ignoreDir);
+            if (result.success) 
+            {
+               console.log(`  ✓ Removed ${ignoreDir}`);
+            }
+            else 
+            {
+               console.error(`  ✗ Failed to remove ${ignoreDir}: ${result.error}`);
+            }
+         }
+         
+         // Remove match.d directory
+         const matchDirExists = await window.electronAPI.fileExists(matchDir);
+         if (matchDirExists.exists) 
+         {
+            const result = await window.electronAPI.removeDirectory(matchDir);
+            if (result.success) 
+            {
+               console.log(`  ✓ Removed ${matchDir}`);
+            }
+            else 
+            {
+               console.error(`  ✗ Failed to remove ${matchDir}: ${result.error}`);
+            }
+         }
+         
+         // Try to remove parent directory if it's empty
+         const dirList = await window.electronAPI.listDirectory(etcMatchPath);
+         if (dirList.success && dirList.files.length === 0) 
+         {
+            await window.electronAPI.removeDirectory(etcMatchPath);
+            console.log(`  ✓ Removed empty parent directory`);
+         }
+      }
+      
+      console.log("=== Revert to Defaults Complete ===");
+      alert("Successfully reverted to defaults!\n\nAll custom overrides have been removed.\nYou are now using the shared default patterns.");
+      
+      // Reload project to show only share/ files
+      await loadProject(currentProjectPath);
+   }
+   catch (err) 
+   {
+      console.error("Revert to defaults failed:", err);
+      alert("Failed to revert to defaults: " + err.message);
    }
 }
 
@@ -856,36 +1519,8 @@ function deleteSelectedFile()
       return;
    }
    
-   const fileName = targetEditor.file.name;
-   const confirm = window.confirm(
-      `Delete file "${fileName}"?\n\n` +
-      `This will remove the file from etc/ on next save.`
-   );
-   
-   if (!confirm) 
-   {
-      return;
-   }
-   
-   // Remove editor from UI
-   targetEditor.wrapper.remove();
-   
-   // Remove from editors list
-   const editorList = editors[targetType];
-   const index = editorList.indexOf(targetEditor);
-   if (index >= 0) 
-   {
-      editorList.splice(index, 1);
-   }
-   
-   // Mark for deletion (we'll delete on save)
-   if (!window.filesToDelete) 
-   {
-      window.filesToDelete = [];
-   }
-   window.filesToDelete.push(targetEditor.file.path);
-   
-   console.log(`Marked for deletion: ${fileName}`);
+   // Use the new deleteEditorFile function
+   deleteEditorFile(targetEditor.file, targetType);
 }
 
 // Environment variable management
@@ -1072,6 +1707,203 @@ document.getElementById("save-preferences").addEventListener("click", async () =
    
    // Show message to reload
    alert("Preferences saved. Please reopen the project to see changes.");
+});
+
+// Add file modal handlers
+document.getElementById("close-add-file-modal").addEventListener("click", () => 
+{
+   document.getElementById("add-file-modal").classList.remove("show");
+});
+
+document.getElementById("cancel-add-file").addEventListener("click", () => 
+{
+   document.getElementById("add-file-modal").classList.remove("show");
+});
+
+document.getElementById("confirm-add-file").addEventListener("click", () => 
+{
+   createNewFile();
+});
+
+// Update filename preview as user types
+document.getElementById("file-priority").addEventListener("input", (e) => 
+{
+   // Only allow digits
+   e.target.value = e.target.value.replace(/[^0-9]/g, "");
+   
+   // Auto-pad with leading zero if only one digit entered
+   if (e.target.value.length === 1 && e.data) 
+   {
+      const num = parseInt(e.target.value);
+      if (num >= 0 && num <= 9) 
+      {
+         e.target.value = "0" + e.target.value;
+      }
+   }
+   
+   updateFilenamePreview();
+});
+
+document.getElementById("file-type").addEventListener("input", (e) => 
+{
+   // Only allow letters, numbers, underscores
+   e.target.value = e.target.value.replace(/[^a-zA-Z0-9_]/g, "");
+   updateFilenamePreview();
+});
+
+document.getElementById("file-category").addEventListener("input", (e) => 
+{
+   // Only allow letters, numbers, underscores
+   e.target.value = e.target.value.replace(/[^a-zA-Z0-9_]/g, "");
+   updateFilenamePreview();
+});
+
+// Allow Enter key to submit in modal
+document.getElementById("file-priority").addEventListener("keypress", (e) => 
+{
+   if (e.key === "Enter") 
+   {
+      document.getElementById("file-type").focus();
+   }
+});
+
+document.getElementById("file-type").addEventListener("keypress", (e) => 
+{
+   if (e.key === "Enter") 
+   {
+      document.getElementById("file-category").focus();
+   }
+});
+
+document.getElementById("file-category").addEventListener("keypress", (e) => 
+{
+   if (e.key === "Enter") 
+   {
+      createNewFile();
+   }
+});
+
+// Doctor functionality
+async function runDoctor() 
+{
+   if (!currentProjectPath) 
+   {
+      alert("No project loaded. Open a project first.");
+      return;
+   }
+   
+   const modal = document.getElementById("doctor-modal");
+   const resultsEl = document.getElementById("doctor-results");
+   
+   resultsEl.innerHTML = '<div class="doctor-running">Running diagnostics...</div>';
+   modal.classList.add("show");
+   
+   try 
+   {
+      const report = await window.electronAPI.runDoctor(currentProjectPath);
+      
+      let html = "";
+      
+      // Cache directory info
+      if (!report.cacheDir) 
+      {
+         html += '<div class="doctor-section">';
+         html += '<div class="doctor-ok">✓ No cache directory found — nothing to clean.</div>';
+         html += '</div>';
+      }
+      else 
+      {
+         html += '<div class="doctor-section">';
+         html += `<div class="doctor-label">Cache directory</div>`;
+         html += `<div class="doctor-value">${report.cacheDir}</div>`;
+         html += `<div class="doctor-stats">${report.cacheFiles.length} cache entries, ${report.patternFiles.length} pattern files</div>`;
+         html += '</div>';
+         
+         // Stale entries
+         if (report.staleEntries.length === 0) 
+         {
+            html += '<div class="doctor-section">';
+            html += '<div class="doctor-ok">✓ All cache entries are up-to-date.</div>';
+            html += '</div>';
+         }
+         else 
+         {
+            html += '<div class="doctor-section">';
+            html += `<div class="doctor-warn">⚠ Found ${report.staleEntries.length} stale cache entries:</div>`;
+            html += '<div class="doctor-entries">';
+            
+            for (const entry of report.staleEntries) 
+            {
+               let icon;
+               let cssClass;
+               
+               if (entry.reason === "stale") 
+               {
+                  icon = "⏰";
+                  cssClass = "doctor-entry-stale";
+               }
+               else if (entry.reason === "missing") 
+               {
+                  icon = "❌";
+                  cssClass = "doctor-entry-missing";
+               }
+               else 
+               {
+                  icon = "👻";
+                  cssClass = "doctor-entry-orphaned";
+               }
+               
+               html += `<div class="doctor-entry ${cssClass}">`;
+               html += `<span class="doctor-entry-icon">${icon}</span>`;
+               html += `<span class="doctor-entry-name">${entry.patternFile}</span>`;
+               
+               if (entry.location !== "cache" && entry.subdir) 
+               {
+                  html += `<span class="doctor-entry-location">${entry.location}/${entry.subdir}</span>`;
+               }
+               
+               html += `<div class="doctor-entry-detail">${entry.detail}</div>`;
+               html += '</div>';
+            }
+            
+            html += '</div>';
+            html += '</div>';
+         }
+         
+         // Clean result
+         html += '<div class="doctor-section">';
+         if (report.cleaned) 
+         {
+            html += '<div class="doctor-ok">✓ Cache cleaned successfully.</div>';
+         }
+         else 
+         {
+            html += `<div class="doctor-error">✗ Failed to clean cache: ${report.error || "unknown error"}</div>`;
+         }
+         html += '</div>';
+      }
+      
+      if (report.error && !report.cacheDir) 
+      {
+         html += `<div class="doctor-section"><div class="doctor-error">✗ Error: ${report.error}</div></div>`;
+      }
+      
+      resultsEl.innerHTML = html;
+   }
+   catch (err) 
+   {
+      resultsEl.innerHTML = `<div class="doctor-error">✗ Doctor failed: ${err.message}</div>`;
+   }
+}
+
+document.getElementById("close-doctor-modal").addEventListener("click", () => 
+{
+   document.getElementById("doctor-modal").classList.remove("show");
+});
+
+document.getElementById("dismiss-doctor").addEventListener("click", () => 
+{
+   document.getElementById("doctor-modal").classList.remove("show");
 });
 
 // Cleanup on window close

@@ -5,6 +5,7 @@ const { exec } = require("child_process");
 const os = require("os");
 
 let mainWindow;
+let hasEtcFiles = false;
 
 async function createWindow()
 {
@@ -145,6 +146,17 @@ async function createMenu()
                accelerator: "CmdOrCtrl+S",
                click      : () => mainWindow.webContents.send("menu-save"),
             },
+            {
+               label      : "Revert to Saved",
+               accelerator: "CmdOrCtrl+R",
+               click      : () => mainWindow.webContents.send("menu-revert"),
+            },
+            {
+               label      : "Revert to Defaults",
+               accelerator: "CmdOrCtrl+Shift+R",
+               enabled    : hasEtcFiles,
+               click      : () => mainWindow.webContents.send("menu-revert-defaults"),
+            },
             { type: "separator" },
             {
                label      : "Exit",
@@ -188,9 +200,26 @@ async function createMenu()
             { role: "togglefullscreen" },
             { type: "separator" },
             {
+               label  : "Show Deleted Files",
+               type   : "checkbox",
+               checked: false,
+               click  : (menuItem) => mainWindow.webContents.send("menu-toggle-deleted", menuItem.checked),
+            },
+            { type: "separator" },
+            {
                label      : "Preferences…",
                accelerator: "CmdOrCtrl+,",
                click      : () => mainWindow.webContents.send("menu-preferences"),
+            },
+         ],
+      },
+      {
+         label  : "Tools",
+         submenu: [
+            {
+               label      : "Doctor",
+               accelerator: "CmdOrCtrl+Shift+D",
+               click      : () => mainWindow.webContents.send("menu-doctor"),
             },
          ],
       },
@@ -217,7 +246,28 @@ async function createMenu()
    Menu.setApplicationMenu(menu);
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(async () => 
+{
+   await createWindow();
+
+   // Find arguments after "--" separator (passed from cli.js)
+   const separatorIndex = process.argv.indexOf("--");
+   const projectArg = separatorIndex !== -1 && process.argv[separatorIndex + 1] 
+      ? process.argv[separatorIndex + 1] 
+      : null;
+
+   if (projectArg && mainWindow) 
+   {
+      const projectPath = path.resolve(projectArg);
+      mainWindow.webContents.on("did-finish-load", () => 
+      {
+         setTimeout(() => 
+         {
+            mainWindow.webContents.send("open-project-path", projectPath);
+         }, 500);
+      });
+   }
+});
 
 app.on("window-all-closed", () => 
 {
@@ -402,6 +452,20 @@ ipcMain.handle("write-temp-file", async (event, tempDir, subdir, filename, conte
    }
 });
 
+function buildEnvFlags(envVars)
+{
+   let envFlags = "";
+   for (const [key, value] of Object.entries(envVars)) 
+   {
+      if (value) 
+      {
+         const escapedValue = value.replace(/'/g, "'\\''");
+         envFlags += ` -D${key}='${escapedValue}'`;
+      }
+   }
+   return envFlags;
+}
+
 ipcMain.handle("run-mulle-match", async (event, projectPath, tempDir, envVars = {}) => 
 {
    return new Promise((resolve) => 
@@ -410,15 +474,7 @@ ipcMain.handle("run-mulle-match", async (event, projectPath, tempDir, envVars = 
       
       // Build -D flags for environment variables
       // Use single quotes to prevent premature shell expansion
-      let envFlags = "";
-      for (const [key, value] of Object.entries(envVars)) 
-      {
-         if (value) 
-         {
-            const escapedValue = value.replace(/'/g, "'\\''");
-            envFlags += ` -D${key}='${escapedValue}'`;
-         }
-      }
+      const envFlags = buildEnvFlags(envVars);
       
       const command = `cd "${projectPath}" && mulle-sde${envFlags} exec mulle-match --root-dir "${tempDir}" --cache-dir "${cacheDir}" list -f '%C: %f\\n' | column -t`;
       
@@ -444,6 +500,33 @@ ipcMain.handle("run-mulle-match", async (event, projectPath, tempDir, envVars = 
             });
          }
       });
+   });
+});
+
+ipcMain.handle("evaluate-env-vars", async (event, projectPath) => 
+{
+   return new Promise((resolve) => 
+   {
+      const keys = ["MULLE_MATCH_FILENAMES", "MULLE_MATCH_IGNORE_PATH", "MULLE_MATCH_PATH"];
+      const result = {};
+      let completed = 0;
+      
+      for (const key of keys) 
+      {
+         const command = `cd "${projectPath}" && mulle-sde get --output-eval ${key}`;
+         
+         exec(command, { timeout: 5000 }, (error, stdout) =>
+         {
+            // On error (e.g. variable not set, exit code 4), treat as empty
+            result[key] = error ? "" : stdout.trim();
+            
+            completed++;
+            if (completed === keys.length) 
+            {
+               resolve({ success: true, values: result });
+            }
+         });
+      }
    });
 });
 
@@ -607,6 +690,10 @@ ipcMain.handle("write-pattern-file", async (event, filePath, content) =>
 {
    try 
    {
+      // Ensure directory exists
+      const dir = path.dirname(filePath);
+      await fs.mkdir(dir, { recursive: true });
+      
       await fs.writeFile(filePath, content, "utf-8");
       return { success: true };
    }
@@ -642,6 +729,10 @@ ipcMain.handle("create-symlink", async (event, target, linkPath) =>
 {
    try 
    {
+      // Ensure directory exists
+      const dir = path.dirname(linkPath);
+      await fs.mkdir(dir, { recursive: true });
+      
       // Remove existing file/symlink if it exists
       try 
       {
@@ -732,6 +823,251 @@ ipcMain.handle("file-exists", async (event, filePath) =>
    }
 });
 
+ipcMain.handle("update-menu-state", async (event, state) => 
+{
+   hasEtcFiles = state.hasEtcFiles || false;
+   await createMenu();
+   return { success: true };
+});
+
+async function findCacheDirectory(projectPath)
+{
+   const varPath = path.join(projectPath, ".mulle", "var");
+   
+   async function searchDir(dir)
+   {
+      try 
+      {
+         const entries = await fs.readdir(dir, { withFileTypes: true });
+         for (const entry of entries) 
+         {
+            if (!entry.isDirectory()) 
+            {
+               continue;
+            }
+            const fullPath = path.join(dir, entry.name);
+            if (entry.name === "cache") 
+            {
+               // Check if parent is "match"
+               if (path.basename(dir) === "match") 
+               {
+                  return fullPath;
+               }
+            }
+            const found = await searchDir(fullPath);
+            if (found) 
+            {
+               return found;
+            }
+         }
+      }
+      catch (err) 
+      {
+         // Directory doesn't exist or can't be read
+      }
+      return null;
+   }
+   
+   return searchDir(varPath);
+}
+
+ipcMain.handle("run-doctor", async (event, projectPath) => 
+{
+   const report = {
+      cacheDir    : null,
+      cacheFiles  : [],
+      patternFiles: [],
+      staleEntries: [],
+      cleaned     : false,
+      error       : null
+   };
+   
+   try 
+   {
+      // Step 1: Find cache directory
+      const cacheDir = await findCacheDirectory(projectPath);
+      if (!cacheDir) 
+      {
+         report.cacheDir = null;
+         report.cleaned = true; // Nothing to clean
+         return report;
+      }
+      report.cacheDir = cacheDir;
+      
+      // Step 2: Collect cache files with timestamps
+      const cacheEntries = await fs.readdir(cacheDir);
+      for (const name of cacheEntries) 
+      {
+         const filePath = path.join(cacheDir, name);
+         try 
+         {
+            const stats = await fs.stat(filePath);
+            if (stats.isFile()) 
+            {
+               report.cacheFiles.push({
+                  name,
+                  path : filePath,
+                  mtime: stats.mtimeMs
+               });
+            }
+         }
+         catch (err) 
+         {
+            // Skip files we can't stat
+         }
+      }
+      
+      // Step 3: Collect all pattern files with timestamps
+      const subdirs = ["ignore.d", "match.d"];
+      const locations = [
+         { base: path.join(projectPath, ".mulle", "etc", "match"), location: "etc" },
+         { base: path.join(projectPath, ".mulle", "share", "match"), location: "share" }
+      ];
+      
+      for (const { base, location } of locations) 
+      {
+         for (const subdir of subdirs) 
+         {
+            const dirPath = path.join(base, subdir);
+            try 
+            {
+               const files = await fs.readdir(dirPath);
+               for (const name of files) 
+               {
+                  const filePath = path.join(dirPath, name);
+                  try 
+                  {
+                     // Use stat (not lstat) to follow symlinks and get real file mtime
+                     const stats = await fs.stat(filePath);
+                     const lstats = await fs.lstat(filePath);
+                     report.patternFiles.push({
+                        name,
+                        path     : filePath,
+                        location,
+                        subdir,
+                        isSymlink: lstats.isSymbolicLink(),
+                        mtime    : stats.mtimeMs
+                     });
+                  }
+                  catch (err) 
+                  {
+                     // Skip
+                  }
+               }
+            }
+            catch (err) 
+            {
+               // Directory doesn't exist
+            }
+         }
+      }
+      
+      // Step 4: Map cache filenames back to pattern filenames and compare
+      // Cache naming: `60-asset--toc` -> `__p__i_60_asset__toc`
+      // Reverse: strip `__p__i_` prefix, replace `_` with `-`, but `__` stays as `--`
+      // Actually, let's map pattern -> cache name instead (forward is easier)
+      const patternToCacheName = (name) => 
+      {
+         return "__p__i_" + name.replace(/-/g, "_");
+      };
+      
+      // Build a map of cache files by name for quick lookup
+      const cacheMap = new Map();
+      for (const cacheFile of report.cacheFiles) 
+      {
+         cacheMap.set(cacheFile.name, cacheFile);
+      }
+      
+      // Use effective pattern files (etc/ overrides share/ for same name+subdir)
+      const effectiveFiles = new Map();
+      // Add share first, then etc overrides
+      for (const pf of report.patternFiles) 
+      {
+         if (pf.location === "share") 
+         {
+            effectiveFiles.set(`${pf.subdir}/${pf.name}`, pf);
+         }
+      }
+      for (const pf of report.patternFiles) 
+      {
+         if (pf.location === "etc") 
+         {
+            effectiveFiles.set(`${pf.subdir}/${pf.name}`, pf);
+         }
+      }
+      
+      for (const pf of effectiveFiles.values()) 
+      {
+         const expectedCacheName = patternToCacheName(pf.name);
+         const cacheFile = cacheMap.get(expectedCacheName);
+         
+         if (!cacheFile) 
+         {
+            report.staleEntries.push({
+               patternFile: pf.name,
+               location   : pf.location,
+               subdir     : pf.subdir,
+               reason     : "missing",
+               detail     : "No cache entry found"
+            });
+         }
+         else if (pf.mtime > cacheFile.mtime) 
+         {
+            const patternDate = new Date(pf.mtime).toLocaleString();
+            const cacheDate = new Date(cacheFile.mtime).toLocaleString();
+            report.staleEntries.push({
+               patternFile: pf.name,
+               location   : pf.location,
+               subdir     : pf.subdir,
+               reason     : "stale",
+               detail     : `Pattern: ${patternDate}  >  Cache: ${cacheDate}`
+            });
+         }
+      }
+      
+      // Also check for orphaned cache files (cache entries without pattern files)
+      const allExpectedCacheNames = new Set();
+      for (const pf of effectiveFiles.values()) 
+      {
+         allExpectedCacheNames.add(patternToCacheName(pf.name));
+      }
+      
+      for (const cacheFile of report.cacheFiles) 
+      {
+         if (!allExpectedCacheNames.has(cacheFile.name)) 
+         {
+            report.staleEntries.push({
+               patternFile: cacheFile.name,
+               location   : "cache",
+               subdir     : "",
+               reason     : "orphaned",
+               detail     : "Cache entry has no matching pattern file"
+            });
+         }
+      }
+      
+      // Step 5: Clean the cache with mulle-match clean
+      await new Promise((resolve) => 
+      {
+         exec(`cd "${projectPath}" && mulle-match clean`, { timeout: 10000 }, (error) => 
+         {
+            report.cleaned = !error;
+            if (error) 
+            {
+               report.error = error.message;
+            }
+            resolve();
+         });
+      });
+   }
+   catch (err) 
+   {
+      report.error = err.message;
+   }
+   
+   return report;
+});
+
 ipcMain.handle("create-craft-directory", async (event, projectPath) => 
 {
    try 
@@ -744,6 +1080,9 @@ ipcMain.handle("create-craft-directory", async (event, projectPath) =>
    }
    catch (err) 
    {
-      return { success: false, error: err.message };
+      return {
+         success: false,
+         error  : err.message 
+      };
    }
 });

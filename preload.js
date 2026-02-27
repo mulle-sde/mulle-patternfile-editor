@@ -2,10 +2,15 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("electronAPI", {
    // Menu event listeners
-   onMenuOpen      : (callback) => ipcRenderer.on("menu-open", callback),
-   onMenuSave      : (callback) => ipcRenderer.on("menu-save", callback),
-   onMenuAddFile   : (callback) => ipcRenderer.on("menu-add-file", callback),
-   onMenuDeleteFile: (callback) => ipcRenderer.on("menu-delete-file", callback),
+   onMenuOpen          : (callback) => ipcRenderer.on("menu-open", callback),
+   onMenuSave          : (callback) => ipcRenderer.on("menu-save", callback),
+   onMenuRevert        : (callback) => ipcRenderer.on("menu-revert", callback),
+   onMenuRevertDefaults: (callback) => ipcRenderer.on("menu-revert-defaults", callback),
+   onMenuAddFile       : (callback) => ipcRenderer.on("menu-add-file", callback),
+   onMenuDeleteFile    : (callback) => ipcRenderer.on("menu-delete-file", callback),
+   onMenuToggleDeleted : (callback) => ipcRenderer.on("menu-toggle-deleted", (event, checked) => callback(checked)),
+   onMenuDoctor        : (callback) => ipcRenderer.on("menu-doctor", callback),
+   onOpenProjectPath   : (callback) => ipcRenderer.on("open-project-path", (event, projectPath) => callback(projectPath)),
    
    // Dialog handlers
    openDirectoryDialog: () => ipcRenderer.invoke("open-directory-dialog"),
@@ -19,6 +24,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
    createTempDirectory : () => ipcRenderer.invoke("create-temp-directory"),
    writeTempFile       : (tempDir, subdir, filename, content) => ipcRenderer.invoke("write-temp-file", tempDir, subdir, filename, content),
    runMulleMatch       : (projectPath, tempDir, envVars) => ipcRenderer.invoke("run-mulle-match", projectPath, tempDir, envVars),
+   evaluateEnvVars     : (projectPath) => ipcRenderer.invoke("evaluate-env-vars", projectPath),
    cleanupTempDirectory: (tempDir) => ipcRenderer.invoke("cleanup-temp-directory", tempDir),
    
    // Environment operations
@@ -26,14 +32,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
    setMulleEnv: (projectPath, keyName, value) => ipcRenderer.invoke("set-mulle-env", projectPath, keyName, value),
    
    // File operations for saving
-   writePatternFile     : (filePath, content) => ipcRenderer.invoke("write-pattern-file", filePath, content),
-   readPatternFile      : (filePath) => ipcRenderer.invoke("read-pattern-file", filePath),
-   createSymlink        : (target, linkPath) => ipcRenderer.invoke("create-symlink", target, linkPath),
-   removeFile           : (filePath) => ipcRenderer.invoke("remove-file", filePath),
-   listDirectory        : (dirPath) => ipcRenderer.invoke("list-directory", dirPath),
-   removeDirectory      : (dirPath) => ipcRenderer.invoke("remove-directory", dirPath),
-   fileExists           : (filePath) => ipcRenderer.invoke("file-exists", filePath),
-   createCraftDirectory : (projectPath) => ipcRenderer.invoke("create-craft-directory", projectPath),
+   writePatternFile    : (filePath, content) => ipcRenderer.invoke("write-pattern-file", filePath, content),
+   readPatternFile     : (filePath) => ipcRenderer.invoke("read-pattern-file", filePath),
+   createSymlink       : (target, linkPath) => ipcRenderer.invoke("create-symlink", target, linkPath),
+   removeFile          : (filePath) => ipcRenderer.invoke("remove-file", filePath),
+   listDirectory       : (dirPath) => ipcRenderer.invoke("list-directory", dirPath),
+   removeDirectory     : (dirPath) => ipcRenderer.invoke("remove-directory", dirPath),
+   fileExists          : (filePath) => ipcRenderer.invoke("file-exists", filePath),
+   createCraftDirectory: (projectPath) => ipcRenderer.invoke("create-craft-directory", projectPath),
+   updateMenuState     : (state) => ipcRenderer.invoke("update-menu-state", state),
+   runDoctor           : (projectPath) => ipcRenderer.invoke("run-doctor", projectPath),
    
    // Recent projects
    getRecentProjects  : () => ipcRenderer.invoke("get-recent-projects"),

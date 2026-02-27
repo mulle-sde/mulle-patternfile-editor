@@ -3,6 +3,9 @@
   "version": "0.0.1",
   "description": "🧶 GUI App to edit mulle-match pattern files",
   "main": "main.js",
+  "bin": {
+    "mulle-patternfile-editor": "./cli.js"
+  },
   "homepage": "https://github.com/mulle-sde",
   "repository": {
     "type": "git",
