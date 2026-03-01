@@ -1,6 +1,6 @@
 {
   "name": "mulle-patternfile-editor",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "🧶 GUI App to edit mulle-match pattern files",
   "main": "main.js",
   "bin": {
