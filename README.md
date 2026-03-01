@@ -2,7 +2,12 @@
 
 🎯 GUI App to edit mulle-match pattern files
 
-A desktop application for visually editing mulle-match pattern files used in mulle-sde projects. This editor provides a dual-column interface for managing ignore patterns and match patterns.
+A desktop application for visually editing [mulle-match](https://github.com/mulle-sde/mulle-match)
+configuration files, the pattern files used in mulle-sde projects to match
+project files. This editor provides a dual-column interface for managing
+ignore patterns and match patterns.
+
+![screeny](https://raw.githubusercontent.com/mulle-sde/mulle-patternfile-editor/master/screeny.png)
 
 ## Features
 
@@ -13,7 +18,14 @@ A desktop application for visually editing mulle-match pattern files used in mul
 
 ## Installation
 
+
 Download the latest release for your platform from the [Releases](https://github.com/mulle-sde/mulle-patternfile-editor/releases) page.
+
+or
+
+``` bash
+npm install mulle-patternfile-editor
+```
 
 ## Development
 
@@ -49,3 +61,5 @@ MIT License - see [LICENSE](LICENSE) file for details.
 Mulle kybernetiK  
 nat@mulle-kybernetik.com  
 https://github.com/mulle-sde
+
+![footer](https://raw.githubusercontent.com/mulle-sde/mulle-environment-editor/master/heartlessly-vibecoded.png)

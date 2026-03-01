@@ -1,12 +1,11 @@
 {
   "name": "mulle-patternfile-editor",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "🧶 GUI App to edit mulle-match pattern files",
   "main": "main.js",
   "bin": {
-    "mulle-patternfile-editor": "./cli.js"
+    "mulle-patternfile-editor": "cli.js"
   },
-  "homepage": "https://github.com/mulle-sde",
   "repository": {
     "type": "git",
     "url": "https://github.com/mulle-sde/mulle-patternfile-editor.git"
@@ -15,12 +14,13 @@
     "start": "electron . --no-sandbox",
     "dev": "electron . --no-sandbox --inspect",
     "build": "electron-builder",
-    "build:linux": "electron-builder --linux",
-    "build:appimage": "electron-builder --linux AppImage",
-    "build:mac": "electron-builder --mac",
-    "build:win": "electron-builder --win",
-    "build:all": "electron-builder --linux --mac --win",
-    "build:dir": "electron-builder --dir",
+    "build-linux": "electron-builder --linux",
+    "build-mac": "electron-builder --mac",
+    "build-win": "electron-builder --win",
+    "build-all": "electron-builder --linux --mac --win",
+    "dist": "electron-builder --publish=never",
+    "lint": "eslint .",
+    "lint-fix": "eslint . --fix",
     "format": "npx eslint *.js --fix"
   },
   "build": {
@@ -37,6 +37,7 @@
       "output": "dist"
     },
     "files": [
+      "cli.js",
       "main.js",
       "preload.js",
       "renderer.js",
@@ -48,23 +49,17 @@
     ],
     "linux": {
       "target": [
-        "AppImage",
-        "deb",
-        "rpm"
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "category": "Development",
       "icon": "icon-512.png",
       "description": "🧶 GUI App to edit mulle-match pattern files",
       "executableName": "mulle-patternfile-editor"
-    },
-    "appImage": {
-      "license": "LICENSE"
-    },
-    "deb": {
-      "depends": []
-    },
-    "rpm": {
-      "depends": []
     },
     "mac": {
       "target": [
@@ -74,56 +69,43 @@
             "x64",
             "arm64"
           ]
-        },
-        {
-          "target": "zip",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
         }
       ],
       "category": "public.app-category.developer-tools",
       "icon": "icon-512.png"
     },
-    "dmg": {
-      "background": null,
-      "window": {
-        "width": 540,
-        "height": 380
-      }
-    },
     "win": {
       "target": [
-        "nsis",
-        "portable"
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "icon": "icon-512.png"
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
     }
   },
   "keywords": [
-    "electron",
+    "mulle-sde",
     "mulle-match",
     "pattern-editor",
-    "file-patterns"
+    "electron"
   ],
   "author": {
     "name": "Mulle kybernetiK",
     "email": "nat@mulle-kybernetik.com"
   },
   "license": "MIT",
-  "devDependencies": {
-    "electron": "^28.3.3",
-    "electron-builder": "^24.13.3",
-    "eslint": "^8.57.1"
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mulle-sde/mulle-patternfile-editor.git"
   },
-  "dependencies": {
+  "dependencies": {},
+  "devDependencies": {
+    "electron": "^40.4.1",
+    "electron-builder": "^26.7.0",
+    "eslint": "^8.57.1",
     "eslint-plugin-align-assignments": "^1.1.2"
   }
 }
